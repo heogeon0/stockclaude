@@ -1,6 +1,6 @@
 ---
 name: stock
-description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(sub-agent) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. 매트릭스(변동성×재무 12셀)로 액션 차등화. stock-manager MCP 서버(58 툴) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
+description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(sub-agent) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. 매트릭스(변동성×재무 12셀)로 액션 차등화. stockclaude MCP 서버(58 툴) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
 ---
 
 # Stock — 통합 주식 운영 skill
@@ -8,7 +8,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 > **단일 진입점**으로 모든 주식 운영 처리.
 > 모드별 워크플로우는 `references/{daily,discover,research}-workflow.md` 분리.
 > base 본문 작성은 `agents/base-*-updater` sub-agent 격리.
-> 데이터·계산은 `stock-manager` MCP (48 툴) + PostgreSQL.
+> 데이터·계산은 `stockclaude` MCP (48 툴) + PostgreSQL.
 
 ---
 
@@ -43,7 +43,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ## 프로젝트 핵심 사실
 
-- **데이터·계산은 MCP**: `stock-manager` MCP 서버가 **48 툴** 제공 (`~/Desktop/Project/stock-manager/`)
+- **데이터·계산은 MCP**: `stockclaude` MCP 서버가 **48 툴** 제공 (`~/Desktop/Project/stockclaude/`)
 - **PostgreSQL 백엔드**: 포지션·거래·지표·시그널·애널·스코어링 가중치 모두 DB
 - **MCP 단일 의존**: 모든 데이터는 MCP 호출로 조회. **markdown 파일 직접 Read 금지** (DB source of truth)
 - **너의 역할 = 해석·판단·서술**. 숫자는 MCP, 의미 부여는 references 룰
@@ -319,7 +319,7 @@ sub-agent 종료 후 메인이 즉시:
 ### 프로젝트 경로
 
 ```
-~/Desktop/Project/stock-manager/          ← MCP 서버 (FastAPI + PG + 48 tools)
+~/Desktop/Project/stockclaude/          ← MCP 서버 (FastAPI + PG + 48 tools)
   .mcp.json                                ← Claude Code 자동 등록
   server/
     api/, scrapers/, analysis/, repos/, jobs/, mcp/
@@ -342,7 +342,7 @@ sub-agent 종료 후 메인이 즉시:
 ### 서버 기동 (필요 시)
 
 ```bash
-cd ~/Desktop/Project/stock-manager
+cd ~/Desktop/Project/stockclaude
 docker compose up -d                       # PG + Adminer
 uv run uvicorn server.main:app --reload    # FastAPI (선택)
 ```
