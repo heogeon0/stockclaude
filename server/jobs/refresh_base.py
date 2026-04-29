@@ -123,7 +123,7 @@ def run(codes: list[str] | None = None, *, verbose: bool = True) -> dict:
     반환:
       {"ok": [...], "skip": [...], "fail": [...], "details": {code: result}}
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     if codes is None:
         scope = positions.list_daily_scope(uid)
         codes = [p["code"] for p in scope if p.get("market") == "kr"]

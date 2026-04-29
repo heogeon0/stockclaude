@@ -7,14 +7,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from server.api.deps import current_user_id, require_api_key
+from server.api.deps import current_user_id, require_google_user
 from server.repos import trades
 from server.schemas.trade import TradeCreate, TradeOut
 
 router = APIRouter(
     prefix="/trades",
     tags=["trades"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

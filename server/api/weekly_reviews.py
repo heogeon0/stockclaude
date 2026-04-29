@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.repos import weekly_reviews as wr
 from server.schemas.weekly_review import (
     WeeklyContextLatest,
@@ -22,7 +22,7 @@ from server.schemas.weekly_review import (
 router = APIRouter(
     prefix="/weekly-reviews",
     tags=["weekly-reviews"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

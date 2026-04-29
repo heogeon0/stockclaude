@@ -45,9 +45,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+# 운영: ALLOWED_ORIGINS env (콤마 분리) + Vercel preview 와일드카드
+_extra_origins = [
+    o.strip() for o in (settings.allowed_origins or "").split(",") if o.strip()
+]
+# Vercel preview 도메인: <project>-<hash>-<scope>.vercel.app
+# settings.allowed_origin_regex 가 있으면 그걸 우선 사용 (예: ^https://stockclaude.*\.vercel\.app$)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_default_origins + _extra_origins,
+    allow_origin_regex=settings.allowed_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

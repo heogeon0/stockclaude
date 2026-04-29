@@ -6,14 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from server.api.deps import current_user_id, require_api_key
+from server.api.deps import current_user_id, require_google_user
 from server.repos import industries as industries_repo
 from server.schemas.industry import IndustriesOut, IndustryOut
 
 router = APIRouter(
     prefix="/industries",
     tags=["industries"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

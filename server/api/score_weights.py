@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.repos import score_weights as repo
 from server.schemas.score_weights import (
     AppliedWeightsOut,
@@ -19,7 +19,7 @@ from server.schemas.score_weights import (
 router = APIRouter(
     prefix="/score-weights",
     tags=["score-weights"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

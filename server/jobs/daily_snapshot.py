@@ -151,7 +151,7 @@ def _save_latest_bar(user_id, code: str, df: pd.DataFrame) -> date | None:
 
 
 def run(codes: list[str] | None = None, days: int = 400) -> dict:
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     if codes is None:
         active = positions.list_active(uid)
         codes = [p["code"] for p in active]

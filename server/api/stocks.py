@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from server.api.deps import current_user_id, require_api_key
+from server.api.deps import current_user_id, require_google_user
 from server.repos import (
     analyst,
     positions,
@@ -27,7 +27,7 @@ from server.schemas.stock import (
 router = APIRouter(
     prefix="/stocks",
     tags=["stocks"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

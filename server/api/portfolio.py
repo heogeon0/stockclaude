@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from datetime import date as date_cls
 
 from server.analysis.events import detect_concentration_alerts
-from server.api.deps import current_user_id, require_api_key
+from server.api.deps import current_user_id, require_google_user
 from server.repos import cash, portfolio, portfolio_snapshots, positions, trades
 from server.schemas.portfolio import (
     ConcentrationAlertOut,
@@ -24,7 +24,7 @@ from server.schemas.stock import PositionOut
 router = APIRouter(
     prefix="/portfolio",
     tags=["portfolio"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 PositionStatus = Literal["active", "all"]

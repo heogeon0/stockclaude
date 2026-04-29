@@ -8,11 +8,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 
 from server.analysis.regime import kospi_regime, sp500_regime
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.schemas.common import Market
 from server.schemas.regime import RegimeOut
 
-router = APIRouter(prefix="/regime", tags=["regime"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/regime", tags=["regime"], dependencies=[Depends(require_google_user)])
 
 
 @router.get("", response_model=RegimeOut)

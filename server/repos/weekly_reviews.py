@@ -13,7 +13,7 @@ from server.db import get_conn
 
 
 def get_review(week_start: date_cls, user_id: str | None = None) -> dict[str, Any] | None:
-    uid = user_id or settings.default_user_id
+    uid = user_id or settings.stock_user_id
     with get_conn() as conn:
         cur = conn.execute(
             """
@@ -32,7 +32,7 @@ def get_review(week_start: date_cls, user_id: str | None = None) -> dict[str, An
 
 
 def list_reviews(limit: int = 12, user_id: str | None = None) -> list[dict[str, Any]]:
-    uid = user_id or settings.default_user_id
+    uid = user_id or settings.stock_user_id
     with get_conn() as conn:
         cur = conn.execute(
             """
@@ -67,7 +67,7 @@ def upsert_review(
     headline: str | None = None,
     content: str | None = None,
 ) -> None:
-    uid = user_id or settings.default_user_id
+    uid = user_id or settings.stock_user_id
 
     # NOT NULL JSONB 필드는 None 이면 빈 컨테이너로 (기존 값 유지 위해 COALESCE)
     win_rate_j = Jsonb(win_rate) if win_rate is not None else None

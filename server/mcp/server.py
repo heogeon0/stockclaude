@@ -84,7 +84,44 @@ from server.analysis.volatility import (
 from server.repos import economy, industries
 from server.scrapers import dart, kis, naver
 
-mcp: FastMCP = FastMCP("stock-manager")
+
+def _build_mcp() -> FastMCP:
+    """transport 모드에 따라 FastMCP 인스턴스 구성.
+
+    - stdio (로컬 Claude Code): auth 없음. 자식 프로세스 신뢰.
+    - streamable-http (원격 배포): GoogleProvider OAuth + 이메일 화이트리스트.
+      `MCP_BASE_URL`, `GOOGLE_CLIENT_ID/SECRET`, `ALLOWED_EMAILS` 필수.
+    """
+    if not settings.mcp_remote_enabled:
+        return FastMCP("stock-manager")
+
+    missing = [
+        name
+        for name, val in [
+            ("MCP_BASE_URL", settings.mcp_base_url),
+            ("GOOGLE_CLIENT_ID", settings.google_client_id),
+            ("GOOGLE_CLIENT_SECRET", settings.google_client_secret),
+            ("ALLOWED_EMAILS", settings.allowed_emails),
+        ]
+        if not val
+    ]
+    if missing:
+        raise RuntimeError(
+            f"streamable-http 모드에 필수 env 누락: {', '.join(missing)}"
+        )
+
+    from server.mcp.auth import build_google_oauth_provider
+
+    auth = build_google_oauth_provider(
+        client_id=settings.google_client_id,  # type: ignore[arg-type]
+        client_secret=settings.google_client_secret,  # type: ignore[arg-type]
+        base_url=settings.mcp_base_url,  # type: ignore[arg-type]
+        allowed_emails=settings.allowed_emails_list,
+    )
+    return FastMCP("stock-manager", auth=auth)
+
+
+mcp: FastMCP = _build_mcp()
 
 
 def _is_us_ticker(code: str) -> bool:
@@ -215,7 +252,7 @@ def get_portfolio() -> dict:
 
     ⚠️ Pending(감시 대기) 포지션은 제외됨. /stock-daily 스코프는 `list_daily_positions()` 사용.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     data = portfolio.compute_current_weights(uid)
     realized = trades.total_realized_by_market(uid)
 
@@ -247,7 +284,7 @@ def list_daily_positions() -> dict:
         "counts": {"active": N, "pending": M, "total": N+M}
       }
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     rows = positions.list_daily_scope(uid)
     active = [_row_safe(r) for r in rows if r["status"] == "Active"]
     pending = [_row_safe(r) for r in rows if r["status"] == "Pending"]
@@ -270,7 +307,7 @@ def get_stock_context(code: str) -> dict:
     종목 분석 시작점 — base + 최신 daily + 포지션 + watch levels + 애널 컨센.
     Claude 가 분석·의견 형성 전 첫 호출.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     stock_row = stocks.get_stock(code)
     if not stock_row:
         return {"error": f"stock not found: {code}"}
@@ -297,7 +334,7 @@ def get_applied_weights(code: str, timeframe: str = "swing") -> dict:
 @mcp.tool
 def list_trades(code: str | None = None, limit: int = 20) -> list[dict]:
     """최근 매매 이력 조회. code 지정 시 종목별."""
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     rows = trades.list_by_user(uid, code=code, limit=limit)
     return [_row_safe(r) for r in rows]  # type: ignore[misc]
 
@@ -355,7 +392,7 @@ def check_concentration(code: str, qty: float, price: float) -> dict:
     """
     매매 집행 전 집중도 체크. 25% 룰·섹터 쏠림 등 경고.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     data = portfolio.compute_current_weights(uid)
 
     cost_new = Decimal(str(qty)) * Decimal(str(price))
@@ -402,7 +439,7 @@ def propose_position_params(code: str, entry_price: float, intent: str = "") -> 
     진입 검토 시 파라미터 추천 (초안).
     base.grade, 최신 daily, intent 종합 → style·stop_loss·tags 기본값 제시.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     base = stock_base.get_base(code)
     daily = stock_daily.get_latest(uid, code)
     grade = (base or {}).get("grade")
@@ -552,7 +589,7 @@ def record_trade(
         - industry_code NULL 이면 → register_stock 으로 매핑 후 재시도 안내
         - rule_category 카탈로그 외 입력 시 명확한 에러 (CHECK constraint 가 강제하지만 사전 차단)
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
 
     # 안전망 — stocks 존재 + industry_code 매핑 검증
     stock_row = stocks.get_stock(code)
@@ -641,7 +678,7 @@ def save_daily_report(code: str, date: str, verdict: str, content: str) -> dict:
     """
     from datetime import date as date_cls
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     d = date_cls.fromisoformat(date)
     stock_daily.upsert_content(uid, code, d, content)
     return {"ok": True, "code": code, "date": date, "chars": len(content)}
@@ -673,7 +710,7 @@ def save_portfolio_summary(
     """
     from datetime import date as date_cls
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     d = date_cls.fromisoformat(date)
     portfolio_snapshots.save(
         uid, d,
@@ -701,7 +738,7 @@ def get_portfolio_summary(date: str) -> dict:
     """
     from datetime import date as date_cls
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     d = date_cls.fromisoformat(date)
     row = portfolio_snapshots.get(uid, d)
     if row is None:
@@ -724,7 +761,7 @@ def reconcile_actions(date: str) -> dict:
     """
     from datetime import date as date_cls
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     d = date_cls.fromisoformat(date)
     return portfolio_snapshots.reconcile(uid, d)
 
@@ -968,7 +1005,7 @@ def detect_events(code: str) -> dict:
       - 52주 고저 돌파 (네이버 일봉)
       - rating change (analyst_reports 최근 7일)
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     result: dict = {}
 
     # 실적
@@ -1006,7 +1043,7 @@ def portfolio_correlation(days: int = 60) -> dict:
     현재 Active 포지션 종목 간 상관 행렬.
     KR/US 모두 포함. 비중은 cost_basis 기준.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     active = positions.list_active(uid)
     if len(active) < 2:
         return {"error": "need at least 2 active positions"}
@@ -1081,7 +1118,7 @@ def detect_portfolio_concentration() -> dict:
     """
     전 포지션 집중도 경고 (시장별 25%+).
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     active = positions.list_active(uid)
     cash_data = cash.get_all(uid)
     alerts = detect_concentration_alerts(
@@ -1144,7 +1181,7 @@ def compute_score(
         mac_dict["점수"] = 70  # 디폴트 (실제로는 research로 업데이트됨)
 
     if technical_score is None:
-        uid = settings.default_user_id
+        uid = settings.stock_user_id
         latest = stock_daily.get_latest(uid, code)
         if latest and latest.get("verdict"):
             mapping = {"강한매수": 85, "매수우세": 70, "중립": 55, "매도우세": 35, "강한매도": 20}
@@ -1483,7 +1520,7 @@ def rank_momentum(
     크로스섹셔널 모멘텀 랭킹. 각 종목 OHLCV → momentum_score → Z-score 정렬.
     codes 미지정 시 해당 market 의 Active 포지션 전부.
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     if codes is None:
         active = positions.list_active(uid)
         codes = [p["code"] for p in active if p.get("market") == market]
@@ -1572,7 +1609,7 @@ def propose_watch_levels(
 
     tier: Premium/Standard/Cautious/Defensive (+ -단타 변형)
     """
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
 
     # ATR 자동 조회
     if atr is None:
@@ -1935,7 +1972,7 @@ def refresh_kr_consensus(codes: list[str] | None = None, days: int = 90, max_pag
     from server.scrapers.naver import fetch_research_reports
 
     if codes is None:
-        scope = positions.list_daily_scope(settings.default_user_id)
+        scope = positions.list_daily_scope(settings.stock_user_id)
         codes = [p["code"] for p in scope if p.get("market") == "kr"]
 
     out: dict = {"ok": [], "fail": [], "skipped_us": [], "details": {}}
@@ -2015,7 +2052,7 @@ def refresh_us_consensus(codes: list[str] | None = None) -> dict:
     KST = ZoneInfo("Asia/Seoul")
 
     if codes is None:
-        scope = positions.list_daily_scope(settings.default_user_id)
+        scope = positions.list_daily_scope(settings.stock_user_id)
         codes = [p["code"] for p in scope if p.get("market") == "us"]
 
     out: dict = {"ok": [], "fail": [], "skipped_kr": [], "details": {}}
@@ -2124,7 +2161,7 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
     """
     from datetime import date as _date
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     today = _date.today()
     out: dict = {"today": today.isoformat(),
                  "economy": [], "industries": [], "stocks": [], "summary": {}}
@@ -2352,7 +2389,7 @@ def analyze_position(code: str) -> dict:
     if not s_row:
         return {"error": f"stock not found: {code}"}
 
-    uid = settings.default_user_id
+    uid = settings.stock_user_id
     market = s_row.get("market", "kr")
     name = s_row.get("name")
 
@@ -2805,7 +2842,16 @@ def healthcheck(quick: bool = True) -> dict:
 
 def main() -> None:
     open_pool()
-    mcp.run()
+    if settings.mcp_remote_enabled:
+        # 원격 배포 — streamable-http + Google OAuth 활성화 (인스턴스 생성 시 적용됨)
+        mcp.run(
+            transport="http",
+            host=settings.mcp_host,
+            port=settings.mcp_port,
+        )
+    else:
+        # 로컬 — stdio (Claude Code 가 자식 프로세스로 spawn)
+        mcp.run()
 
 
 if __name__ == "__main__":

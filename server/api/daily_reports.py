@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from server.api.deps import current_user_id, require_api_key
+from server.api.deps import current_user_id, require_google_user
 from server.repos import stock_daily
 from server.schemas.common import Market
 from server.schemas.daily_report import (
@@ -19,7 +19,7 @@ from server.schemas.daily_report import (
 router = APIRouter(
     prefix="/daily-reports",
     tags=["daily-reports"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

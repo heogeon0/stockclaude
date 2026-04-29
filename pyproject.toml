@@ -27,8 +27,10 @@ dependencies = [
   "fredapi>=0.5",
   "finnhub-python>=2.4",
   "yfinance>=0.2.40",
-  # MCP
-  "fastmcp>=0.4",
+  # MCP — 3.2+: GoogleProvider OAuth proxy (Discovery/Authorize/Token 자동 노출)
+  "fastmcp>=3.2,<4",
+  # Google ID token 검증 (Vercel 웹 → FastAPI 인증)
+  "google-auth>=2.35",
   # Utilities
   "python-dotenv>=1.0",
   "tenacity>=9.0",

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.repos import backtest_cache as repo
 from server.schemas.backtest import BacktestCacheRow, BacktestListOut
 
 router = APIRouter(
     prefix="/backtest",
     tags=["backtest"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

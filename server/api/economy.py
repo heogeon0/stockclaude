@@ -6,7 +6,7 @@ from datetime import date as date_cls
 
 from fastapi import APIRouter, Depends
 
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.repos import economy as economy_repo
 from server.schemas.common import Market
 from server.schemas.economy import EconomyBaseOut, EconomyDailyOut
@@ -14,7 +14,7 @@ from server.schemas.economy import EconomyBaseOut, EconomyDailyOut
 router = APIRouter(
     prefix="/economy",
     tags=["economy"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_google_user)],
 )
 
 

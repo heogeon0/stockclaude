@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from server.api.deps import require_api_key
+from server.api.deps import require_google_user
 from server.config import settings
 from server.schemas.skill import (
     SKILL_NAMES,
@@ -18,7 +18,7 @@ from server.schemas.skill import (
     SkillName,
 )
 
-router = APIRouter(prefix="/skills", tags=["skills"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/skills", tags=["skills"], dependencies=[Depends(require_google_user)])
 
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
