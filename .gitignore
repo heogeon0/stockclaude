@@ -1,0 +1,72 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# DB
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+postgres-data/
+backups/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets / keys
+*.pem
+*.key
+secrets/
+.kis_token.json
+
+# Claude Code local
+.claude/
+agent/
+
+# Runtime caches
+docs_cache/
+*.pkl
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# MCP local config (paths machine-specific)
+.mcp.json
+
+# Reports (personal data)
+reports/
+
+# Real seed (if anyone runs db_dump locally)
+db/seed.sql

@@ -1,0 +1,62 @@
+[project]
+name = "stock-manager"
+version = "0.1.0"
+description = "Personal stock portfolio & analysis server"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  # Web / API
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "python-multipart>=0.0.12",
+  # DB
+  "psycopg[binary]>=3.2",
+  "psycopg-pool>=3.2",
+  # HTTP / scraping
+  "httpx>=0.27",
+  "requests>=2.32",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.3",
+  # Data
+  "pandas>=2.2",
+  "numpy>=2.0",
+  # DART / KRX / FRED / Finnhub / Yahoo Finance
+  "opendartreader>=0.2.3",
+  "fredapi>=0.5",
+  "finnhub-python>=2.4",
+  "yfinance>=0.2.40",
+  # MCP
+  "fastmcp>=0.4",
+  # Utilities
+  "python-dotenv>=1.0",
+  "tenacity>=9.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "httpx>=0.27",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["server"]

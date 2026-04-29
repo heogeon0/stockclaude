@@ -1,0 +1,242 @@
+# Daily Workflow — 일일 운영 절차
+
+> stock skill 의 daily 모드 진입 시 따라야 할 워크플로우.
+> v2 7-Phase Pipeline + BLOCKING 12 + 종목별 묶음 분석 + 매매 룰.
+> SKILL.md 본문은 호출 정책만 명시, 상세 절차는 이 파일에 분리.
+
+---
+
+## ⛔ BLOCKING — 시작 전 12개 체크
+
+`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 12 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
+
+| # | Phase | 체크 항목 | 호출 |
+|---|---|---|---|
+| 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외). `get_portfolio()` 사용 금지 (Active 만) |
+| 2 | 0 | **base 만기 + 자동 갱신** ⭐ | `check_base_freshness(auto_refresh=True)` — stale stock_base 자동 refresh + economy/industry 는 sub-agent spawn |
+| 3 | 1 | 어제 pending 액션 로드 | `get_portfolio_summary(yesterday)` |
+| 4 | 1 | 어제 trades 매칭 | `reconcile_actions(yesterday)` |
+| 5 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` — 오늘 이미 체결된 매매 인지 필수 |
+| 6 | 1 | **오늘 trades 매칭** ⭐ | `reconcile_actions(today)` — Phase 1 에서 호출 (종료 루틴이 아님) |
+| 7 | 1 | 주간 회고 컨텍스트 | `get_weekly_context(weeks=4)` (→ `weekly-context-rules.md`) |
+| 8 | 2 | 시장 국면 판정 | `detect_market_regime()` |
+| 9 | 2 | 당일 매크로 / 뉴스 | `WebSearch("YYYY-MM-DD 한국/미국 주식 주요 이슈")` 최소 1회 |
+| 10 | 2 | `economy/{오늘}.md` | 없으면 즉시 자동 생성 (`economy-daily-template.md`) |
+| 11 | 3 | **종목별 16 카테고리 묶음** ⭐ | `analyze_position(code)` — #1 결과의 `all_codes` 전부 1회 |
+| 12 | 3 | **종목별 당일 뉴스** | `WebSearch` 보유 종목 각각 1회 (→ `websearch-rules.md`) |
+
+**⭐ #1**: `list_daily_positions()` — Active + Pending 일괄 반환. Pending 도 daily 생성.
+**⭐ #2**: `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 sub-agent spawn — `agents/base-*-updater`.
+**⭐ #5/#6**: 오늘 trades 인지 누락 시 typical bug — executed 매매를 pending 으로 잘못 기재.
+**⭐ #11**: `analyze_position(code)` 1회로 16 카테고리 중 10개 묶음 반환 (context/realtime/indicators/signals/financials/flow/volatility/events/scoring/consensus). 별도 호출 금지 — 토큰 절약.
+
+긴급 시엔 `/stock-daily --fast` 명시로만 일부 스킵 허용.
+
+### 자기 감사 — `save_portfolio_summary` 직전 출력
+
+→ `~/.claude/skills/stock/assets/dependency-audit-template.md` 참조.
+
+---
+
+## 7-Phase Pipeline (v2)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Phase 0: 신선도 cascade (deterministic)                      │
+│   check_base_freshness() → is_stale per-dim + auto_triggers │
+│   stale 시 즉시 sub-agent spawn (Agent("base-*-updater"))   │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 1: 과거 학습 회수 (어제·오늘 거래 + 주간 회고)          │
+│   ├─ get_portfolio_summary(yesterday)                       │
+│   ├─ reconcile_actions(yesterday)                           │
+│   ├─ list_trades(limit=20)                                  │
+│   ├─ reconcile_actions(today)                               │
+│   └─ get_weekly_context(weeks=4)                            │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 2: 시장·매크로 컨텍스트                                 │
+│   detect_market_regime() + economy/{오늘}.md                │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 3: 종목별 묶음 분석 (Active + Pending 순회)             │
+│   for code in all_codes:                                    │
+│     analyze_position(code) → 16 카테고리 묶음 + cell 자동   │
+│     coverage_pct < 80% → ⚠️ 반쪽 분석 표기                  │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 4: 분류 (Cell + Verdict)                               │
+│   cell = 변동성×재무 12셀 자동 derive                       │
+│   verdict = signals.summary.종합                            │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 5: 액션 결정 (LLM 판단 + decision-tree.md)             │
+│   → references/decision-tree.md 참조                        │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 6: 게이트 (deterministic)                               │
+│   check_concentration / 예수금 / 실적 D-7 / 수급 z 검증     │
+│   실패 시 자동 매매 차단                                     │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 7: 출력·저장                                            │
+│   save_daily_report × N + save_portfolio_summary           │
+│   Phase Audit 표 자동 출력                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 실행 모드
+
+### 1. 단일 종목 — `/stock-daily {종목}`
+- 하나의 종목만 daily 생성
+- market 자동 판정 (LLM 직접 판단 (6자리 숫자 = KR / 1~5자 대문자 = US))
+
+### 2. 포트폴리오 — `/stock-daily` / `/stock-daily portfolio`
+- `list_daily_positions()` 로 Active + Pending 일괄 로드
+- 각 종목 daily + 마지막에 포트폴리오 종합 요약
+- **하이브리드 포트**:
+  - 통화별 총자산 (KRW / USD) 분리 + 환산 통합액
+  - USD 비중 > 25% 시 환율 민감도 경고
+
+### 상태 필터
+
+| 상태 | daily 생성 |
+|---|---|
+| Active | ✅ |
+| Pending | ✅ (감시) |
+| Close | ❌ (스킵) |
+
+---
+
+## 0단계 전 — 어제 액션 플랜 리마인드 (포트폴리오 모드 필수)
+
+1. `get_portfolio_summary(date=yesterday)` 호출
+2. `found: true` 면 `reconcile_actions(yesterday)` 자동 호출 → trades 매칭
+3. 업데이트된 `action_plan` 다시 조회
+4. 남은 `pending` / `conditional` 액션을 사용자에게 먼저 제시
+
+`found: false` 면 skip (첫 사용 또는 휴장일).
+
+---
+
+## 종목별 — `analyze_position(code)` 1회 호출 (10 카테고리 묶음)
+
+1. context (base + position + watch + daily)
+2. realtime (KIS / Naver 자동 분기 종가)
+3. indicators (12 지표 — RSI/MACD/BB/MA/ATR/Stoch/ADX/일목)
+4. signals (12 전략 + chart_analysis VCP/SEPA)
+5. financials (DART KR — 경고 자동)
+6. flow (KR 기관/외인 z-score)
+7. volatility (realized/parkinson/regime/DD)
+8. events (52w 돌파 / 실적 D-N / 등급변경)
+9. scoring (5 차원 등급)
+10. consensus (컨센 + 추세 + 리포트)
+
+→ 반환에 `coverage_pct`, `categories_succeeded/total`, `errors` 포함. coverage < 100% 시 ⚠️ 표시.
+
+### 포트 단위 — 별도 호출
+
+- `detect_market_regime` (regime)
+- `portfolio_correlation(days=60)` (correlation + effective_holdings)
+- `detect_portfolio_concentration` (concentration)
+- `get_weekly_context(weeks=4)` (backtest 룰 win-rate)
+- `rank_momentum(codes=[...])` (선택)
+
+---
+
+## 매매 집행 전 체크 (집행 직전 필수)
+
+피라미딩 / 매수 / 매도 시그널 실행 전:
+- `check_concentration(code, qty, price)` MCP 호출 — 25% 룰 + 섹터 비중 + 효과적 종목수 자동 계산
+- 25% 룰 위반 시 daily 보고서 최상단 ⚠️ 경고
+- 사용자가 "무시하고 집행" 하지 않는 한 자동 실행 금지
+
+---
+
+## 보고서 저장 (Phase 7)
+
+```
+1. save_daily_report (각 종목별)
+2. save_portfolio_summary (
+     date=today,
+     per_stock_summary=[...],
+     risk_flags=[...],
+     action_plan=[...],
+     headline="한 줄 결론",
+     summary_content="<마크다운 본문 + Audit 최상단>",
+   )
+```
+
+JSON 스키마: → `snapshot-schema.md` 참조.
+
+### 분석 순서 우선순위
+
+1. 🔥 실적 D-7 이내 종목 (`detect_events` D-N 자동)
+2. ⚠️ 손절선 -3% 이내 종목
+3. 🛡️ Defensive 등급 종목 (리스크 체크)
+4. 🏆 Premium / Standard 등급 (피라미딩 트리거)
+5. 변동성 extreme regime 종목 (즉시 대응)
+
+---
+
+## 전날 daily 참조 원칙 (편향 방지)
+
+- ✅ 참조: "한 줄 결론" / "예측 트리거" / "손절선"
+- ❌ 금지: 기술분석 해석 / 투자의견 본문 / 10 Key Points
+
+---
+
+## position.md 업데이트 프로토콜
+
+→ `~/.claude/skills/stock/assets/position-template.md` 참조.
+
+### Tier 1 — 매매 체결 시 (즉시, 필수)
+
+매매 알리면 즉시 3가지 동시 업데이트:
+1. 해당 종목 position.md
+2. portfolio.md (테이블 / 예수금 / 비중 / 매매 이력 / 실현이익)
+3. 사용자 요약 리포트 (Before/After + 다음 감시 레벨 + 집중도 경고)
+
+### Tier 2 — daily 실행 시 (현재가 관련만)
+
+- 현재가 / 평가액 / 평가손익
+- 갱신일 stamp
+- 감시 레벨 % 표기
+- 변동성·재무 등급 자동 갱신
+
+### Tier 3 — 이벤트 트리거
+
+- 감시 레벨 터치 → "달성/경고" 마크
+- 기준선/손절선 이탈 → ⚠️ 최상단 경고
+- base.md 갱신 → 진입 논리·목표가 재검토
+
+### 금지
+
+- 매매 없이 평단 임의 변경
+- 감시 레벨 절대 가격 임의 조정
+- 매매 이력 삭제
+- Close 상태 파일 매매 이력 편집
+
+---
+
+## 보조 파일 인덱스 (이 워크플로우)
+
+references:
+- `decision-tree.md` — Phase 5 액션 결정 가이드라인
+- `expiration-rules.md` — base 만기·자동 재생성
+- `base-impact-classification.md` — 4분류 룰 (high/medium/review/low)
+- `base-patch-protocol.md` — Daily Appended Facts append 절차
+- `websearch-rules.md` — WebSearch 의무 + 5종 추가 조건
+- `weekly-context-rules.md` — 4가지 활용 룰
+- `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
+
+assets:
+- `daily-report-template.md`, `portfolio-summary-template.md`, `position-template.md`, `dependency-audit-template.md`, `economy-daily-template.md`
+- `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
+
+assets:
+- `daily-report-template.md` — 종목 daily 본문
+- `portfolio-summary-template.md` — 포트폴리오 종합 요약
+- `position-template.md` — 보유 종목 position.md
+- `dependency-audit-template.md` — Audit 출력 + ⚠️ 반쪽 daily
+- `economy-daily-template.md` — economy/{날짜}.md 자동 생성
+
+scripts:
+- `detect_market.py` — KR/US 자동 판정
+- `concentration_check.py` — 집행 전 집중도 체크 fallback
+- `load_deps.py` — 직접 호출 모드 임포트 시퀀스 fallback
