@@ -11,14 +11,14 @@
 **공통 정량 분석** 전담:
 - 재무 / 기술 / 수급 / 모멘텀 / 이벤트 / 컨센 **6차원** 동시 분석
 - KR / US 시장 자동 라우팅
-- base 만료 감지 → sub-agent 자동 spawn
+- base 만료 감지 → 메인 inline 자동 처리
 - 유의미 발견 → 종목 base 의 `Daily Appended Facts` 섹션에 즉시 patch
 - daily / discover 가 액션 결정에 사용할 종합 데이터 반환
 
 **하지 않는 것**:
 - 일일 보고서 / 액션 플랜 → daily 모드
 - 신규 발굴 / 광역 스크리닝 → discover 모드
-- base 본문 작성·갱신 → sub-agent (`agents/base-*-updater`)
+- base 본문 작성·갱신 → 메인 inline (`references/base-*-update-inline.md`)
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### 1. 종목 단일 분석 — `/stock-research {종목}`
 - 6차원 정량 분석 + 종합 verdict
-- base 만료 시 자동 갱신 (sub-agent spawn)
+- base 만료 시 자동 갱신 (메인 inline 처리, `references/base-*-update-inline.md`)
 - 유의미 발견 시 종목 base append
 
 ### 2. 비교 분석 — `/stock-research {종목A} vs {종목B}`
@@ -64,16 +64,16 @@
 
 ### 0단계 — 의존성 체크 (필수 선행)
 
-base 만료 시 sub-agent spawn 연쇄:
+base 만료 시 메인 inline 처리 연쇄:
 
-| 만료/없음 | 행동 |
+| 만료/없음 | inline 절차 |
 |---|---|
-| `economy_base` 만기 1일+ | `Agent("base-economy-updater", market=...)` spawn |
-| `industry_base` 만기 7일+ | `Agent("base-industry-updater", name=...)` spawn |
-| `stock_base` 만기 30일+ | `Agent("base-stock-updater", code=...)` spawn |
+| `economy_base` 만기 1일+ | `references/base-economy-update-inline.md` (입력: market=...) |
+| `industry_base` 만기 7일+ | `references/base-industry-update-inline.md` (입력: name=...) |
+| `stock_base` 만기 30일+ | `references/base-stock-update-inline.md` (입력: code=...) |
 
-연쇄 순서: economy → industry → stock (메인 LLM 순차 spawn, sub-agent 안에서 sub-spawn 금지).
-각 spawn 종료 후 메인이 DB read-back 으로 검증 (Trust but verify).
+연쇄 순서: economy → industry → stock (메인이 순차 처리, sub-agent spawn 금지).
+각 inline 절차 종료 후 메인이 DB read-back 으로 검증 (Trust but verify).
 
 ### 1단계 — Market 라우팅 + 데이터 수집
 

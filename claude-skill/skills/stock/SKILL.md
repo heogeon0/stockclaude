@@ -1,13 +1,13 @@
 ---
 name: stock
-description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(sub-agent) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. 매트릭스(변동성×재무 12셀)로 액션 차등화. stockclaude MCP 서버(58 툴) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
+description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(inline) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. 매트릭스(변동성×재무 12셀)로 액션 차등화. stockclaude MCP 서버(58 툴) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
 ---
 
 # Stock — 통합 주식 운영 skill
 
 > **단일 진입점**으로 모든 주식 운영 처리.
 > 모드별 워크플로우는 `references/{daily,discover,research}-workflow.md` 분리.
-> base 본문 작성은 `agents/base-*-updater` sub-agent 격리.
+> base 본문 작성은 `references/base-*-update-inline.md` 절차로 메인이 inline 처리 (mobile/Desktop/iOS 호환).
 > 데이터·계산은 `stockclaude` MCP (48 툴) + PostgreSQL.
 
 ---
@@ -19,7 +19,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 | `/stock-daily` | `~/.claude/commands/stock-daily.md` | daily — 보유+Pending 종목 일일 운영 | `references/daily-workflow.md` |
 | `/stock-discover` | `~/.claude/commands/stock-discover.md` | discover — 신규 종목 발굴 | `references/discover-workflow.md` |
 | `/stock-research` | `~/.claude/commands/stock-research.md` | research — 6차원 정량 분석 | `references/research-workflow.md` |
-| `/base-economy` `/base-industry` `/base-stock` | `~/.claude/commands/base-*.md` | base 갱신 (수동 호출) | `agents/base-*-updater` spawn |
+| `/base-economy` `/base-industry` `/base-stock` | `~/.claude/commands/base-*.md` | base 갱신 (수동 호출) | `references/base-*-update-inline.md` 절차 inline 실행 |
 
 각 wrapper 가 stock skill 의 해당 모드로 진입. 컨텍스트는 항상 stock skill 단일.
 
@@ -32,8 +32,8 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 | "내 포트 / 어제 매매 / 보유 종목 현황 / 매매 추천 / 익절·손절·피라미딩" | **daily** | "내 포트 어때?", "오늘 뭐 사야 돼?", "삼성전자 매도할까?" |
 | "신규 종목 / 발굴 / 추천 / 모멘텀 상위 / 어떤 종목이 좋아 / 테마" | **discover** | "요즘 좋은 종목 추천해줘", "AI 관련 신규 종목 찾아줘" |
 | "분석 / 6차원 / 재무 / 컨센 / DCF / 모멘텀 / `{종목명}` 어때 / 비교" | **research** | "삼성SDI 분석해줘", "엔비디아 컨센 어떻게 변했어?" |
-| "base 갱신 / 만기 / 재작성 / Narrative / 펀더멘털 풀 분석" | **base sub-agent** | "삼성전자 base 갱신해줘" → `Agent("base-stock-updater", code=...)` spawn |
-| "거시 / 금리 / 환율 / FOMC / 외국인 수급" | **base-economy sub-agent** | "오늘 거시 어때?" → `Agent("base-economy-updater", market="kr")` |
+| "base 갱신 / 만기 / 재작성 / Narrative / 펀더멘털 풀 분석" | **base 갱신 inline** | "삼성전자 base 갱신해줘" → 메인이 `references/base-stock-update-inline.md` 절차 직접 수행 |
+| "거시 / 금리 / 환율 / FOMC / 외국인 수급" | **base-economy inline** | "오늘 거시 어때?" → 메인이 `references/base-economy-update-inline.md` 절차 직접 수행 |
 
 **복합 요청** (예: "포트 점검하고 신규도 찾아줘") → daily 먼저, 끝난 뒤 discover 진입.
 **모호 시** → 사용자에게 한 번 확인 ("daily 모드로 진입할까요?").
@@ -93,38 +93,38 @@ RSI / Stoch / 52주 고가 이격 / ADX / 20MA 이격 / 변동성 / 거래량:
 
 ---
 
-## base 자동 갱신 (sub-agent spawn)
+## base 자동 갱신 (inline)
 
-base 본문 작성·갱신은 **별도 sub-agent 격리** — 메인 LLM 컨텍스트 보호.
+base 본문 작성·갱신은 **메인 LLM 이 inline 으로 처리** — multi-device (Mac/iOS/Desktop/웹) 환경에서 동일 동작 보장. (옛 sub-agent 격리 폐기 — 2026-04-30. mobile/Desktop/iOS Custom Connector 가 sub-agent 미지원이라 base 가 매일 stale 화되는 문제 해소.)
 
 ### 만기 표
 
-| Base | 만기 | sub-agent | 호출 형식 |
-|---|---|---|---|
-| economy | 1일 | `base-economy-updater` | `Agent("base-economy-updater", market="kr"\|"us")` |
-| industry | 7일 | `base-industry-updater` | `Agent("base-industry-updater", name="반도체"\|"us-tech")` |
-| stock | 30일 | `base-stock-updater` | `Agent("base-stock-updater", code="005930"\|"NVDA")` |
+| Base | 만기 | inline 절차 |
+|---|---|---|
+| economy | 1일 | `references/base-economy-update-inline.md` (입력: market="kr"\|"us") |
+| industry | 7일 | `references/base-industry-update-inline.md` (입력: name="반도체"\|"us-tech") |
+| stock | 30일 | `references/base-stock-update-inline.md` (입력: code="005930"\|"NVDA") |
 
 ### 자동 갱신 정책
 
 각 모드 (daily/discover/research) 진입 시:
 1. `check_base_freshness(auto_refresh=True)` MCP 호출 — KR stock_base 데이터는 자동 refresh, 본문 텍스트가 필요한 base 는 `auto_triggers` 반환
-2. `is_stale: true` 인 base 마다 즉시 sub-agent spawn
-3. **cascade 순서**: economy → industry → stock (메인 LLM 순차 spawn)
-4. **sub-agent 안에서 sub-spawn 금지** — 의존성은 메인이 책임
+2. `is_stale: true` 인 base 마다 즉시 해당 inline 절차 진입 (위 만기 표 참조)
+3. **cascade 순서**: economy → industry → stock (메인이 순차 처리)
+4. **inline 절차 진입 시 sub-spawn 금지** — 메인이 직접 절차 따름. cascade 의존성도 메인 책임.
 
 ### 결과 검증 (Trust but verify)
 
-sub-agent 종료 후 메인이 즉시:
+inline 절차 완료 후 메인이 즉시:
 - `get_economy_base(market)` / `get_industry(code)` / `get_stock_context(code).base` 호출
-- DB 의 `updated_at` 이 spawn 시각 이후인지 확인
+- DB 의 `updated_at` 이 갱신 시작 시각 이후인지 확인
 - 미달 시 사용자 보고 + 1회 재시도 (그래도 실패 시 사용자 개입)
 
-이유: sub-agent 가 "갱신 완료" 만 보고하고 실제로 안 했을 가능성 차단. 무인 운영 신뢰성 핵심.
+이유: inline 절차 결과를 "완료" 라고 자가 보고만 하고 실제 DB 저장 누락 가능성 차단. 무인 운영 신뢰성 핵심.
 
 ### stale 룰 — base 본문 vs Daily Appended Facts
 
-- **만기 (stale) 도래** → 본문 재작성 (sub-agent 가 함)
+- **만기 (stale) 도래** → 본문 재작성 (메인이 inline 절차 따름)
 - **트리거 (컨센±15%/실적±10%/신고가/공시 등)** → 본문 갱신 X. **`Daily Appended Facts` 섹션에 append 만** (사용자 정책: 4/28)
 - 4/28 메모리 룰 `feedback_stale_auto_call.md` 정합
 
@@ -188,7 +188,7 @@ sub-agent 종료 후 메인이 즉시:
 
 2. **industries 테이블 존재 확인**
    - `get_industry(code)` → 있으면 매핑
-   - 없으면 → `Agent("base-industry-updater", name="...")` spawn 후 매핑
+   - 없으면 → 메인이 `references/base-industry-update-inline.md` 절차로 직접 작성 후 매핑
 
 3. **stocks.industry_code UPDATE**
    - INSERT 시점에 같이 입력하거나, 누락됐으면 즉시 UPDATE
@@ -235,7 +235,7 @@ sub-agent 종료 후 메인이 즉시:
 
 핵심:
 - daily / discover 의 종목별 상세 분석 호출
-- base 만료 시 sub-agent spawn (위 cascade)
+- base 만료 시 메인 inline 처리 (위 cascade)
 - 유의미 발견 → 종목 base 의 `Daily Appended Facts` append
 
 ---
@@ -327,9 +327,9 @@ sub-agent 종료 후 메인이 즉시:
 
 ~/.claude/skills/stock/                    ← 본 skill (단일 통합)
   ├── SKILL.md (이 파일)
-  ├── references/  (29개 파일)
-  ├── agents/      (3 sub-agent — base-*-updater)
+  ├── references/  (32개 파일 — base-*-update-inline 3개 포함)
   └── assets/      (12 templates)
+  (agents/ 폐지 — 2026-04-30, base-*-update-inline.md 로 통합)
   (scripts/ 폐지 — 모든 분석·계산은 MCP 단일 의존)
 
 ~/.claude/commands/                        ← wrapper 6개 (호환 슬래시)
@@ -396,18 +396,21 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `discover-filters.md` — 1/2/3단계 필터 + 매트릭스 적용
 - `theme-keywords.md` — 테마별 키워드 (10+ 카테고리)
 
-**base sub-agent 참조**:
+**base inline 절차** (메인이 따라하는 절차서):
+- `base-economy-update-inline.md` — 거시 base 갱신 inline (1일 만기, 8 섹션 + 메타 7키)
+- `base-industry-update-inline.md` — 산업 base 갱신 inline (7일 만기, 8 섹션 + 메타 5키 + score)
+- `base-stock-update-inline.md` — 종목 base 갱신 inline (30일 만기, 9 섹션 + 17 인자)
+
+**base 부속 룰**:
 - `economy-base-classification.md` — 경제 base 영향도 4분류
 - `industry-base-classification.md` — 산업 base 영향도 4분류
 - `industry-sectors.md` — KR 11 + US GICS 11 매핑
 - `stock-base-classification.md` — 종목 base 영향도 4분류
 - `narrative-10-key-points.md` — 10 Key Points 작성
 
-### agents/ (3 sub-agent)
+### agents/ — 폐지 (2026-04-30)
 
-- `base-economy-updater.md` — 거시 base 갱신 (1일 만기)
-- `base-industry-updater.md` — 산업 base 갱신 (7일 만기)
-- `base-stock-updater.md` — 종목 base 갱신 (30일 만기, 9 섹션 풀)
+옛 `base-economy-updater` / `base-industry-updater` / `base-stock-updater` 3 sub-agent 는 multi-device 운영 호환을 위해 inline 절차로 통합됨. `references/base-*-update-inline.md` 3 파일 참조.
 
 ### scripts/ — 폐지 (MCP 단일 의존)
 
@@ -434,11 +437,11 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 
 1. **MCP 먼저** — 숫자·데이터는 항상 MCP 호출, 암기/추정 금지
 2. **변동성×재무 매트릭스 우선** — `references/scoring-weights.md` 셀 룩업
-3. **base 만기 → sub-agent spawn** — 본문 작성은 격리. 메인은 cascade 지휘 + DB read-back 검증
+3. **base 만기 → 메인 inline 처리** — `references/base-*-update-inline.md` 절차 따름. cascade 지휘 + DB read-back 검증 메인 책임
 4. **6차원 분석** — daily / discover 모두 research 차원 활용
 5. **point of truth: 보조 파일** — 같은 룰 여러 곳 복제 금지, references 정의처에서만
 6. **태깅 의무** — [실제]/[추정]/[가정], 불확실은 명시
 7. **집중도 우선** — 매수 제안 전 `check_concentration` 반드시
 8. **자동화 활용** — `record_trade` 후 positions/realized_pnl 은 DB 트리거가 처리
 9. **industry_code 매핑 의무** — NULL 금지
-10. **모드 라우팅** — 사용자 입력에 따라 daily / discover / research / base-* sub-agent 진입
+10. **모드 라우팅** — 사용자 입력에 따라 daily / discover / research / base-* inline 진입

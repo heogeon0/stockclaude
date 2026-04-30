@@ -13,7 +13,7 @@
 | # | Phase | 체크 항목 | 호출 |
 |---|---|---|---|
 | 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외). `get_portfolio()` 사용 금지 (Active 만) |
-| 2 | 0 | **base 만기 + 자동 갱신** ⭐ | `check_base_freshness(auto_refresh=True)` — stale stock_base 자동 refresh + economy/industry 는 sub-agent spawn |
+| 2 | 0 | **base 만기 + 자동 갱신** ⭐ ⛔ 강제 | `check_base_freshness(auto_refresh=True)` — stale stock_base 자동 refresh + **economy/industry stale 발견 시 즉시 메인 inline 절차 실행** (`references/base-*-update-inline.md`). **자율 스킵 금지** ('효율 우선' / '시간 절약' / '1일 정도는 무시' 등 LLM 의 능동 회피 패턴 차단). 스킵 시 ⚠️ 반쪽 daily 즉시 격상 + 보고서 최상단 ⚠️ 명시 |
 | 3 | 1 | 어제 pending 액션 로드 | `get_portfolio_summary(yesterday)` |
 | 4 | 1 | 어제 trades 매칭 | `reconcile_actions(yesterday)` |
 | 5 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` — 오늘 이미 체결된 매매 인지 필수 |
@@ -26,7 +26,9 @@
 | 12 | 3 | **종목별 당일 뉴스** | `WebSearch` 보유 종목 각각 1회 (→ `websearch-rules.md`) |
 
 **⭐ #1**: `list_daily_positions()` — Active + Pending 일괄 반환. Pending 도 daily 생성.
-**⭐ #2**: `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 sub-agent spawn — `agents/base-*-updater`.
+**⭐ #2** (강제): `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 메인 inline 처리 — `references/base-*-update-inline.md` (옛 sub-agent 폐기, 2026-04-30).
+
+> ⛔ **stale 발견 시 강제 진입**. 옛 sub-agent 시절엔 메인이 spawn 호출만 하면 sync wait 로 자동 처리됐지만, inline 화 후엔 메인이 능동 진입 필수. **"효율 우선"·"1일 정도 무시" 스킵 금지** — 매일 강제 갱신이 sub-agent 폐기 결정의 전제 조건임. 스킵하려면 사용자 명시 승인 필요.
 **⭐ #5/#6**: 오늘 trades 인지 누락 시 typical bug — executed 매매를 pending 으로 잘못 기재.
 **⭐ #11**: `analyze_position(code)` 1회로 16 카테고리 중 10개 묶음 반환 (context/realtime/indicators/signals/financials/flow/volatility/events/scoring/consensus). 별도 호출 금지 — 토큰 절약.
 
@@ -44,7 +46,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │ Phase 0: 신선도 cascade (deterministic)                      │
 │   check_base_freshness() → is_stale per-dim + auto_triggers │
-│   stale 시 즉시 sub-agent spawn (Agent("base-*-updater"))   │
+│   stale 시 즉시 메인 inline (references/base-*-update-inline.md) │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 1: 과거 학습 회수 (어제·오늘 거래 + 주간 회고)          │
 │   ├─ get_portfolio_summary(yesterday)                       │
@@ -148,11 +150,15 @@
 
 ---
 
-## 보고서 저장 (Phase 7)
+## 보고서 저장 (Phase 7) — ⛔ BLOCKING 종료 체크리스트
+
+⚠️ **이 단계 누락 시 daily 결과가 DB 에 영구 기록되지 않음.** 4/29·4/30 누락 사례 (analyze_position 13건 다 돌렸지만 stock_daily 저장 0건) 방지용 강제 체크리스트.
+
+### 필수 호출 순서
 
 ```
-1. save_daily_report (각 종목별)
-2. save_portfolio_summary (
+1. save_daily_report(code, date, verdict, content)  # 각 종목별 — list_daily_positions 의 all_codes 전부
+2. save_portfolio_summary(
      date=today,
      per_stock_summary=[...],
      risk_flags=[...],
@@ -160,7 +166,25 @@
      headline="한 줄 결론",
      summary_content="<마크다운 본문 + Audit 최상단>",
    )
+3. DB read-back 검증:
+   - stock_daily.list_reports_on_date(today) → row count 가 all_codes 수와 일치 확인
+   - get_portfolio_summary(today).found == true
 ```
+
+### 종료 직전 자가 점검
+
+- [ ] **base stale 잔여 0 확인** ⛔ — `check_base_freshness()` 재호출, economy/industries 의 `is_stale=true` 카운트 0. 미달이면 BLOCKING #2 위반 (Phase 0 단계 누락) → 즉시 inline 절차 진입 후 재검증
+- [ ] 종목별 `save_daily_report` 호출 — `list_daily_positions().counts.total` 만큼 (Active + Pending 포함). 호출 시 **`verdict` 인자 필수** (강한매수/매수우세/중립/매도우세/강한매도 5종 중 1)
+- [ ] 종합 `save_portfolio_summary` 호출 — `summary_content` + `per_stock_summary` + `action_plan` 3 인자 모두 채움
+- [ ] DB read-back: `list_reports_on_date(today)` 의 row 수 = `all_codes` 수
+- [ ] DB read-back: `get_portfolio_summary(today).found == true`
+- [ ] 누락 발견 시 즉시 재호출 (보고서 출력 전)
+
+### 자주 빠지는 패턴 (4/29·4/30 사례)
+
+- ❌ "analyze_position × N ✅" 만 적고 save_daily_report 호출 누락 → stock_daily 빈 채로 daily 종료
+- ❌ verdict 인자를 None/공백 으로 보내서 verdict 컬럼 NULL 화 (서버 fix 후엔 verdict 무시 안 함)
+- ❌ portfolio_summary 본문은 적었지만 `save_portfolio_summary` MCP 호출 안 함
 
 JSON 스키마: → `snapshot-schema.md` 참조.
 
