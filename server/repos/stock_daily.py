@@ -213,13 +213,25 @@ def latest_report_date(user_id: UUID) -> date_cls | None:
         return row["d"] if row else None
 
 
-def upsert_content(user_id: UUID, code: str, date: date_cls, content: str) -> None:
+def upsert_content(
+    user_id: UUID,
+    code: str,
+    date: date_cls,
+    content: str,
+    verdict: str | None = None,
+) -> None:
+    """content + verdict (선택) 동시 upsert.
+
+    verdict 가 None 이면 기존 값 유지 (COALESCE). 신규 row 면 NULL.
+    """
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO stock_daily (user_id, code, date, content)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_id, code, date) DO UPDATE SET content = EXCLUDED.content
+            INSERT INTO stock_daily (user_id, code, date, content, verdict)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, code, date) DO UPDATE SET
+              content = EXCLUDED.content,
+              verdict = COALESCE(EXCLUDED.verdict, stock_daily.verdict)
             """,
-            (user_id, code, date, content),
+            (user_id, code, date, content, verdict),
         )

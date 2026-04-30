@@ -674,14 +674,17 @@ def reset_score_weights(code: str, timeframe: str | None = None) -> dict:
 def save_daily_report(code: str, date: str, verdict: str, content: str) -> dict:
     """
     일일 분석 보고서 저장. date = 'YYYY-MM-DD'.
+    verdict CHECK: '강한매수'|'매수우세'|'중립'|'매도우세'|'강한매도'.
     signals JSONB 는 compute_signals 결과를 Claude 가 먼저 확인 후 별도 upsert_signals로.
     """
     from datetime import date as date_cls
 
     uid = settings.stock_user_id
     d = date_cls.fromisoformat(date)
-    stock_daily.upsert_content(uid, code, d, content)
-    return {"ok": True, "code": code, "date": date, "chars": len(content)}
+    # verdict 빈 문자열 → None 으로 normalize (CHECK constraint 위반 회피)
+    v = verdict.strip() if verdict else None
+    stock_daily.upsert_content(uid, code, d, content, verdict=v or None)
+    return {"ok": True, "code": code, "date": date, "verdict": v, "chars": len(content)}
 
 
 @mcp.tool
