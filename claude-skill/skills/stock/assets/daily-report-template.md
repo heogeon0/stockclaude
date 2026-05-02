@@ -1,7 +1,25 @@
 # {종목명} 데일리 분석 — YYYY-MM-DD
 
 > 템플릿. `reports/stocks/{종목}/{YYYY-MM-DD}.md` 생성 시 복사 후 채움.
-> **모든 16카테고리 결과를 빠짐없이 명시. "값 없음"이면 그 이유까지 적기 (DB 미적재 / 미가동 / 데이터 부족 등).**
+> **모든 카테고리 결과를 빠짐없이 명시. "값 없음"이면 그 이유까지 적기 (DB 미적재 / 미가동 / 데이터 부족 등).**
+> ⚠️ "📐 Top-down 연결" 섹션 누락 시 반쪽 daily 처리 (per-stock-analysis 출력 의무).
+
+---
+
+## 📐 Top-down 연결 ⭐ 필수 (v5)
+
+> 경제 → 산업 → 종목 의 정합성을 LLM 본문 판단으로 명시. analyze_position 응답에 cell/scoring 자동 derive 가 없으므로 LLM 이 직접 인용.
+
+**한 줄**: 경제 [{cycle_phase: 확장/정점/수축/저점}] → 산업 [{cycle_phase: 도입/성장/성숙/쇠퇴}] → 종목 상태 [{강세/관망/약세}]
+
+**1~2줄 코멘트**: 상위 base 의 결론을 종목 판단에 어떻게 인용했는지 명시.
+- 예: "경제 정점 + 산업 성숙 → 종목 멀티플 압축 리스크. signals.summary 매수우세이지만 사이즈 축소 (-10%)"
+- 예: "경제 확장 + 반도체 성장 + 외인 z+2 — 강한 정합. 단 실적 D-6 이라 손절 -5% 타이트화"
+
+**출처 인용 (각 1줄)**:
+- economy_base ({market}, cycle_phase=..., scenario_probs=...): "한 줄 핵심"
+- industry_base ({industry_code}, cycle_phase=..., RS_3M=±N.N%): "한 줄 핵심"
+- stock_base / signals.summary 종합: "한 줄 핵심"
 
 ---
 
@@ -276,3 +294,24 @@
 - 불확실 Top 3
 - compute_signals 정상 여부 (버그 시 수동 판정 표기)
 - ⚠️ "값 없음" 항목은 반드시 사유 적기 (DB 미적재 / 스크래퍼 미가동 / 데이터 부족)
+
+---
+
+## 📊 결론 메타 (v7 신설, 정량 결론) ⭐ 필수
+
+> 추론은 자연어 (위 본문), 결론은 정량 (본 섹션). save_daily_report 호출 시 인자로 전달.
+> G6 결정: 추적/검증 가능한 학습 누적의 본체.
+
+| 필드 | 값 | 비고 |
+|---|---|---|
+| **verdict** | 강한매수/매수우세/중립/매도우세/강한매도 | 5종 enum, 필수 |
+| **size_pct** | NN | LLM 결정 진입 사이즈 (%, 신규/유지면 0 또는 NULL) |
+| **stop_method** | "%" or "ATR" | 손절 방식 |
+| **stop_value** | -7 or 1.5 | % 또는 ATR 배수 |
+| **override_dimensions** | `["earnings_d7", "consensus_upward", "외인_z+2"]` | 활성화 차원 list |
+| **key_factors** | `[{factor: "산업 RS +18.5%", weight: "+"}, ...]` | 결정 영향 큰 요소 3~5개 |
+| **referenced_rules** | `[2, 5]` | rule_catalog 인용 ID list |
+
+→ 위 필드를 `save_daily_report(code, date, verdict, content, size_pct=..., stop_method=..., stop_value=..., override_dimensions=[...], key_factors=[...], referenced_rules=[...])` 호출 시 명시.
+
+⚠️ 결론 메타 누락 시 weekly_review 의 정량 통계 (rule_win_rates / pattern_findings) 가 부정확해짐.

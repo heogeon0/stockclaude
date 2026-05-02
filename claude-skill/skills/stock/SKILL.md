@@ -12,13 +12,14 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
-## 호출 인터페이스 (4 모드)
+## 호출 인터페이스 (5 모드)
 
 | 슬래시 | wrapper 위치 | 모드 | 워크플로우 |
 |---|---|---|---|
 | `/stock-daily` | `~/.claude/commands/stock-daily.md` | daily — 보유+Pending 종목 일일 운영 | `references/daily-workflow.md` |
 | `/stock-discover` | `~/.claude/commands/stock-discover.md` | discover — 신규 종목 발굴 | `references/discover-workflow.md` |
 | `/stock-research` | `~/.claude/commands/stock-research.md` | research — 6차원 정량 분석 | `references/research-workflow.md` |
+| **`/stock-weekly-strategy`** | `~/.claude/commands/stock-weekly-strategy.md` | **weekly-strategy** — 사용자+LLM 브레인스토밍 (v8 신설) | `references/weekly-strategy-brainstorm.md` |
 | `/base-economy` `/base-industry` `/base-stock` | `~/.claude/commands/base-*.md` | base 갱신 (수동 호출) | `references/base-*-update-inline.md` 절차 inline 실행 |
 
 각 wrapper 가 stock skill 의 해당 모드로 진입. 컨텍스트는 항상 stock skill 단일.
@@ -34,6 +35,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 | "분석 / 6차원 / 재무 / 컨센 / DCF / 모멘텀 / `{종목명}` 어때 / 비교" | **research** | "삼성SDI 분석해줘", "엔비디아 컨센 어떻게 변했어?" |
 | "base 갱신 / 만기 / 재작성 / Narrative / 펀더멘털 풀 분석" | **base 갱신 inline** | "삼성전자 base 갱신해줘" → 메인이 `references/base-stock-update-inline.md` 절차 직접 수행 |
 | "거시 / 금리 / 환율 / FOMC / 외국인 수급" | **base-economy inline** | "오늘 거시 어때?" → 메인이 `references/base-economy-update-inline.md` 절차 직접 수행 |
+| "이번 주 전략 / 주간 전략 / 월요일 전략 / 시장관 / 브레인스토밍" | **weekly-strategy** (v8) | "이번 주 어떻게 갈까?" → `references/weekly-strategy-brainstorm.md` 5단계 절차 진입 |
 
 **복합 요청** (예: "포트 점검하고 신규도 찾아줘") → daily 먼저, 끝난 뒤 discover 진입.
 **모호 시** → 사용자에게 한 번 확인 ("daily 모드로 진입할까요?").
@@ -51,18 +53,53 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
+## ⛔ 종목 1건 분석 단일 진입점
+
+> 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 7단계 절차를 무조건 따른다**.
+>
+> 자율 우회 금지 — '효율 우선' / '시간 절약' / '간단히 처리' 같은 LLM 능동 회피 패턴 차단.
+> 매 종목마다 이 절차로 진입. 7단계 다 돌려야 1건 완료.
+
+절차 요약 (상세는 `references/per-stock-analysis.md`):
+1. base 신선도 체크 (`check_base_freshness`)
+2. stale 갱신 (cascade economy → industry → stock, 각 inline 절차)
+3. base 조회 (`get_economy_base` + `get_industry` + `get_stock_context`)
+4. `analyze_position` (raw 데이터, scoring/cell/is_stale 없음)
+5. WebSearch (당일 뉴스, LLM 판단 **전** 의무)
+6. LLM 종합 판단 (판단 룰 인덱스 인용)
+7. 출력 + 저장 (`save_daily_report`, verdict 5종)
+
+모드별 호출 위치:
+
+| 모드 | 호출 시점 | 종목 수 |
+|---|---|---|
+| daily | Phase 3 — Active + Pending 순회 | 5~15 |
+| research | 6차원 분석 진입 | 1 |
+| discover | Top 후보 분석 | 1~5 |
+
+⚠️ 포트 단위 처리 (`detect_market_regime` / `portfolio_correlation` / `detect_portfolio_concentration` / `get_weekly_context` / `save_portfolio_summary`) 는 본 절차 밖 — `daily-workflow.md` 가 별도 처리.
+
+---
+
 ## 공통 룰 (모든 모드 적용)
 
-### 변동성×재무 매트릭스 (v17 핵심)
+### ⭐ 거장 트레이딩 원칙 (v6 신설, 2026-05)
 
-종목별 액션 차등은 **변동성 × 재무 헬스 12셀**로 결정:
-- 변동성: `analyze_volatility(code).regime` → normal / high / extreme
-- 재무: `compute_score(code).breakdown.financial` → A / B / C / D
-- 셀별: 진입 사이즈 / 피라미딩 단계 / 손절폭
+매트릭스 룩업 (옛 v17 의 12셀 / 5×6 / 6대 룰) 은 **anchor 효과 + 검증 안 된 직관적 설계** 로 폐기됨 (`references/_archive/` 보존). 대체:
 
-→ 12셀 정의: **`references/scoring-weights.md`**.
+→ **`references/master-principles.md`** — 검증된 거장 (Livermore / Minervini / O'Neil / Weinstein / Buffett / Marks / PTJ / Lynch) 의 10 카테고리 추상 방향성. 구체 수치 X. LLM 본문 판단의 출발점.
 
-**단타/스윙/중장기/모멘텀 4종 폐지** (v17). 단일 룰 + 매트릭스 차등.
+10 카테고리:
+1. 손익 관리 (Cut losses, let winners run)
+2. 추세 추종 (The trend is your friend)
+3. 변동성 관리
+4. 사이클 인식 (Stage Analysis)
+5. 재무 우량 + 모멘텀 (SEPA / CAN SLIM)
+6. 이벤트 리스크
+7. Top-down (시장 → 산업 → 종목)
+8. 인내와 규율 (Wait for fat pitches)
+9. 분산 vs 집중
+10. 회고와 학습
 
 ### 12 기술 시그널
 
@@ -76,11 +113,11 @@ RSI / Stoch / 52주 고가 이격 / ADX / 20MA 이격 / 변동성 / 거래량:
 
 → **`references/overheat-thresholds.md`**.
 
-### 포지션 액션 6대 룰
+### 산업 평균 대비 본문 판단 (v6 신설)
 
-보유 종목 액션 결정 (수익률 구간 × 시그널 매트릭스 + 손절 단계):
-
-→ **`references/position-action-rules.md`**.
+종목 financial_grade (A/B/C/D) 결정 시 **절대값 anchor 금지**, **산업 평균 대비** 본문 판단:
+- `industries.avg_per` / `avg_pbr` / `avg_roe` / `avg_op_margin` / `vol_baseline_30d` 인용
+- 종목 PER/ROE 가 산업 평균 대비 할인/프리미엄 여부로 grade 결정
 
 ### KR/US 시장 자동 라우팅
 
@@ -160,14 +197,14 @@ inline 절차 완료 후 메인이 즉시:
 [ ] 회고 룰 — get_weekly_context.rolling_stats.rule_win_rates 확인
     • 적용할 rule_category 의 누적 승률 < 50% → D+1 안착 룰 또는 추가 검증 강제
     • < 30% → 4주 누적 폐지 후보 (사용자 검토 권장)
-[ ] 변동성×재무 셀 사이즈 적용 (references/scoring-weights.md)
+[ ] 변동성 + 재무 grade LLM 본문 판단 → master-principles 의 변동성 관리 / 재무 우량 원칙 적용
 [ ] ⭐ record_trade 시 rule_category 명시 — 카탈로그 15 룰 (references/rule-catalog.md)
     • 카탈로그 외 매매 패턴 발견 시 카탈로그 확장 후 진행
 [ ] 집행 후 trades AFTER trigger 가 positions / cash_balance / realized_pnl 자동 재계산
 [ ] 필요 시 propose_watch_levels(persist=True) 로 감시 레벨 자동 생성
 ```
 
-상세 룰: → `references/position-action-rules.md`.
+상세 원칙: → `references/master-principles.md` (옛 position-action-rules 는 `_archive/` 에 보존).
 
 ---
 
@@ -193,8 +230,9 @@ inline 절차 완료 후 메인이 즉시:
 3. **stocks.industry_code UPDATE**
    - INSERT 시점에 같이 입력하거나, 누락됐으면 즉시 UPDATE
 
-4. **`analyze_position` 결과 검증**
-   - `is_stale.industry: null` 반환되면 매핑 누락 신호
+4. **매핑 검증** (analyze_position 의 is_stale 자동 derive 제거 — v2)
+   - `check_base_freshness()` 결과의 `industries[]` 에 해당 종목 산업이 보이지 않으면 매핑 누락 신호
+   - 또는 `get_industry(industry_code)` 직접 호출 후 None 이면 매핑 누락 / industry_code 미등록
 
 ### 산업 코드 컨벤션
 
@@ -363,10 +401,10 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 ### references/ (29개)
 
 **공통 룰** (모든 모드 적용):
-- `scoring-weights.md` — 변동성×재무 12셀 매트릭스 ⭐
+- `master-principles.md` — 거장 트레이딩 원칙 10 카테고리 ⭐ (v6 신설, 옛 매트릭스 대체)
 - `signals-12.md` — 12 기술 시그널 정의
 - `overheat-thresholds.md` — 과열 경고 임계
-- `position-action-rules.md` — 포지션 액션 6대 룰
+- ~~`position-action-rules.md`~~ → `_archive/` 로 이동 (v6, 매트릭스 anchor 폐기)
 - `market-routing.md` — KR/US 데이터 소스 분기
 
 **모드별 워크플로우**:
@@ -375,7 +413,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `research-workflow.md` — research 모드 (6차원 verdict)
 
 **daily 보조**:
-- `decision-tree.md` — Phase 5 액션 결정
+- ~~`decision-tree.md`~~ → `_archive/` 로 이동 (v6). Phase 5 액션 결정은 master-principles + LLM 본문 판단
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
@@ -436,7 +474,8 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 ## 지침 요약
 
 1. **MCP 먼저** — 숫자·데이터는 항상 MCP 호출, 암기/추정 금지
-2. **변동성×재무 매트릭스 우선** — `references/scoring-weights.md` 셀 룩업
+2. **거장 원칙 우선** — `references/master-principles.md` 의 10 카테고리 추상 방향성. 케이스별 수치는 LLM 본문 판단 (산업 평균 대비)
+2.5. **추론은 자연어, 결론은 정량** (v7) — 보고서 본문은 자연어 reasoning (anchor 없음), 저장 시 정량 컬럼 (verdict/size_pct/stop/override_dimensions/key_factors/referenced_rules) 의무. 추적/검증 가능한 학습 누적의 본체
 3. **base 만기 → 메인 inline 처리** — `references/base-*-update-inline.md` 절차 따름. cascade 지휘 + DB read-back 검증 메인 책임
 4. **6차원 분석** — daily / discover 모두 research 차원 활용
 5. **point of truth: 보조 파일** — 같은 룰 여러 곳 복제 금지, references 정의처에서만

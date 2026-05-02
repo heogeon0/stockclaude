@@ -15,7 +15,10 @@ def get_industry(code: str) -> dict[str, Any] | None:
         cur = conn.execute(
             """
             SELECT code, market, name, name_en, parent_code, meta, market_specific,
-                   score, content, updated_at, expires_at
+                   score, content,
+                   cycle_phase, momentum_rs_3m, momentum_rs_6m, leader_followers,
+                   avg_per, avg_pbr, avg_roe, avg_op_margin, vol_baseline_30d,
+                   updated_at, expires_at
               FROM industries WHERE code = %s
             """,
             (code,),
@@ -84,6 +87,15 @@ def upsert(
     market_specific: dict | None = None,
     score: int | None = None,
     content: str | None = None,
+    cycle_phase: str | None = None,
+    momentum_rs_3m: float | None = None,
+    momentum_rs_6m: float | None = None,
+    leader_followers: dict | None = None,
+    avg_per: float | None = None,
+    avg_pbr: float | None = None,
+    avg_roe: float | None = None,
+    avg_op_margin: float | None = None,
+    vol_baseline_30d: float | None = None,
 ) -> None:
     # meta / market_specific NOT NULL 가능 대응: None이면 기존 값 유지 (없으면 {})
     if meta is None or market_specific is None:
@@ -97,8 +109,10 @@ def upsert(
         conn.execute(
             """
             INSERT INTO industries (code, market, name, name_en, parent_code,
-                                     meta, market_specific, score, content)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                     meta, market_specific, score, content,
+                                     cycle_phase, momentum_rs_3m, momentum_rs_6m, leader_followers,
+                                     avg_per, avg_pbr, avg_roe, avg_op_margin, vol_baseline_30d)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (code) DO UPDATE SET
               name = EXCLUDED.name,
               name_en = COALESCE(EXCLUDED.name_en, industries.name_en),
@@ -107,6 +121,15 @@ def upsert(
               market_specific = COALESCE(EXCLUDED.market_specific, industries.market_specific),
               score = COALESCE(EXCLUDED.score, industries.score),
               content = COALESCE(EXCLUDED.content, industries.content),
+              cycle_phase = COALESCE(EXCLUDED.cycle_phase, industries.cycle_phase),
+              momentum_rs_3m = COALESCE(EXCLUDED.momentum_rs_3m, industries.momentum_rs_3m),
+              momentum_rs_6m = COALESCE(EXCLUDED.momentum_rs_6m, industries.momentum_rs_6m),
+              leader_followers = COALESCE(EXCLUDED.leader_followers, industries.leader_followers),
+              avg_per = COALESCE(EXCLUDED.avg_per, industries.avg_per),
+              avg_pbr = COALESCE(EXCLUDED.avg_pbr, industries.avg_pbr),
+              avg_roe = COALESCE(EXCLUDED.avg_roe, industries.avg_roe),
+              avg_op_margin = COALESCE(EXCLUDED.avg_op_margin, industries.avg_op_margin),
+              vol_baseline_30d = COALESCE(EXCLUDED.vol_baseline_30d, industries.vol_baseline_30d),
               updated_at = now()
             """,
             (
@@ -114,5 +137,8 @@ def upsert(
                 Jsonb(meta) if meta is not None else None,
                 Jsonb(market_specific) if market_specific is not None else None,
                 score, content,
+                cycle_phase, momentum_rs_3m, momentum_rs_6m,
+                Jsonb(leader_followers) if leader_followers is not None else None,
+                avg_per, avg_pbr, avg_roe, avg_op_margin, vol_baseline_30d,
             ),
         )

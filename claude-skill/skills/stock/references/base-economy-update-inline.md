@@ -49,14 +49,25 @@ WebSearch 표준 쿼리 (필요 분만):
 표준 템플릿: → `~/.claude/skills/stock/assets/economy-base-template.md` (있다면) 참조. 없으면 아래 구조 그대로.
 
 base 본문 구조:
-1. **Frontmatter** (메타데이터 7키 — 4단계 참조)
+1. **Frontmatter** (메타데이터 7키 + cycle_phase + scenario_probs — 4단계 참조)
 2. 금리/유동성
 3. 환율/무역
 4. 경기/지수
 5. 지정학
 6. 섹터 포지셔닝
 7. (옵션) 외국인 수급 추이
-8. **📝 Daily Appended Facts (since last full review)** — 통합 후 비움
+8. ⭐ **시나리오 트리 (Bull / Base / Bear)** ← v4-a 신설
+   - 3 시나리오 의무 작성. 각 시나리오마다:
+     - 트리거 조건 (예: "FOMC 추가 인하 + CPI < 3.0%")
+     - 핵심 변수 임계 (금리 / 환율 / 외인 수급)
+     - 자산 배분 함의 (위험자산 비중 / 섹터 가이드)
+   - 시나리오 확률 가중치 — 디폴트 Bull 25% / Base 50% / Bear 25%
+   - 갱신 트리거: 어느 시나리오 확률이 ±10%p 이상 이동하면 본문 재작성
+9. ⭐ **사이클 단계 (확장 / 정점 / 수축 / 저점)** ← v4-b 신설
+   - 4단계 중 1개 명시 + 근거 메트릭 3개 (금리·실업·CPI 등)
+   - 다음 단계 전환 트리거 (예: "10년물 - 2년물 역전 → 정점 → 수축 신호")
+   - 단계별 권장 섹터 한 줄 가이드 (확장=경기민감, 정점=가치/방어, 수축=방어, 저점=경기민감 진입)
+10. **📝 Daily Appended Facts (since last full review)** — 통합 후 비움
 
 ---
 
@@ -76,12 +87,12 @@ base 본문 구조:
 
 ---
 
-## 4단계 — 메타 7키 + 저장
+## 4단계 — 메타 7키 + cycle_phase + scenario_probs + 저장
 
-`save_economy_base(market, content, context)` 의 `context` 7키:
+`save_economy_base(market, content, context, cycle_phase, scenario_probs)` 의 인자:
 
 ```python
-context = {
+context = {  # 메타 7키
     '금리_환경': '동결' | '인상' | '인하',
     '환율_수혜': '원화강세' | '원화약세' | '중립',
     '경기_사이클': '확장' | '회복' | '둔화' | '침체',
@@ -90,14 +101,24 @@ context = {
     '외국인_수급': '순유입' | '중립' | '순유출',
     'VI_수준': '낮음' | '중간' | '높음',
 }
+
+cycle_phase = '확장' | '정점' | '수축' | '저점'   # v4-b 신규 (DB 컬럼)
+
+scenario_probs = {                                  # v4-a 신규 (DB 컬럼)
+    'bull': 0.25,
+    'base': 0.50,
+    'bear': 0.25,
+}
 ```
 
 호출:
 ```python
 save_economy_base(
-    market=...,           # "kr" | "us"
-    content=<8 섹션 본문>, # frontmatter 포함
+    market=...,                # "kr" | "us"
+    content=<10 섹션 본문>,     # frontmatter 포함, 시나리오 트리 + 사이클 단계 포함
     context=<7키>,
+    cycle_phase=<1개>,
+    scenario_probs=<dict>,
 )
 ```
 
@@ -137,10 +158,12 @@ assert result['updated_at'] > <save 호출 직전 시각>
 
 ## ✅ 완료 체크리스트
 
-- [ ] 8 섹션 (Frontmatter 포함) 모두 작성
+- [ ] 10 섹션 (Frontmatter + 시나리오 트리 + 사이클 단계 포함) 모두 작성
 - [ ] 메타 7키 모두 채움 (None/공백 금지)
-- [ ] `save_economy_base(market, content, context)` 호출 성공
-- [ ] `get_economy_base(market)` read-back 으로 `updated_at` 갱신 확인
+- [ ] `cycle_phase` 1개 명시 (확장/정점/수축/저점)
+- [ ] `scenario_probs` 3 시나리오 합 = 1.0
+- [ ] `save_economy_base(market, content, context, cycle_phase, scenario_probs)` 호출 성공
+- [ ] `get_economy_base(market)` read-back 으로 `updated_at` 갱신 + cycle_phase / scenario_probs 일치 확인
 - [ ] Daily Appended Facts 비움 + last full review 날짜 갱신
 
 ## 완료 시 메인이 정리할 것

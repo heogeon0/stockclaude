@@ -671,11 +671,32 @@ def reset_score_weights(code: str, timeframe: str | None = None) -> dict:
 
 
 @mcp.tool
-def save_daily_report(code: str, date: str, verdict: str, content: str) -> dict:
+def save_daily_report(
+    code: str,
+    date: str,
+    verdict: str,
+    content: str,
+    *,
+    # v7 (2026-05): 결론 정량 컬럼 (G6 결정 — 추론 자연어, 결론 정량)
+    size_pct: int | None = None,
+    stop_method: str | None = None,
+    stop_value: float | None = None,
+    override_dimensions: list | None = None,
+    key_factors: list | None = None,
+    referenced_rules: list | None = None,
+) -> dict:
     """
     일일 분석 보고서 저장. date = 'YYYY-MM-DD'.
     verdict CHECK: '강한매수'|'매수우세'|'중립'|'매도우세'|'강한매도'.
     signals JSONB 는 compute_signals 결과를 Claude 가 먼저 확인 후 별도 upsert_signals로.
+
+    v7 신규 결론 정량 인자 (per-stock-analysis 7단계 출력 의무):
+      size_pct: LLM 결정 진입 사이즈 (%, NULL 허용)
+      stop_method: '%' or 'ATR'
+      stop_value: -7 (% 손절) 또는 1.5 (ATR 배수)
+      override_dimensions: 활성화된 override 차원 list (예: ["earnings_d7", ...])
+      key_factors: 결정 영향 큰 요소 3~5개 (자연어 짧게)
+      referenced_rules: 인용한 rule_catalog ID list
     """
     from datetime import date as date_cls
 
@@ -683,7 +704,13 @@ def save_daily_report(code: str, date: str, verdict: str, content: str) -> dict:
     d = date_cls.fromisoformat(date)
     # verdict 빈 문자열 → None 으로 normalize (CHECK constraint 위반 회피)
     v = verdict.strip() if verdict else None
-    stock_daily.upsert_content(uid, code, d, content, verdict=v or None)
+    stock_daily.upsert_content(
+        uid, code, d, content, verdict=v or None,
+        size_pct=size_pct, stop_method=stop_method, stop_value=stop_value,
+        override_dimensions=override_dimensions,
+        key_factors=key_factors,
+        referenced_rules=referenced_rules,
+    )
     return {"ok": True, "code": code, "date": date, "verdict": v, "chars": len(content)}
 
 
@@ -1259,6 +1286,8 @@ def save_economy_base(
     *,
     context: dict | None = None,
     content: str | None = None,
+    cycle_phase: str | None = None,
+    scenario_probs: dict | None = None,
 ) -> dict:
     """
     economy_base 테이블에 upsert. None 필드는 기존 값 유지 (COALESCE).
@@ -1270,9 +1299,16 @@ def save_economy_base(
 
     Research 재작성:
       - 전체 content 덮어쓰기
+
+    v4 (2026-05) 신규 인자:
+      - cycle_phase: '확장' | '정점' | '수축' | '저점' (사이클 단계, base inline 절차 v4-b)
+      - scenario_probs: {"bull": 0.30, "base": 0.50, "bear": 0.20} (시나리오 트리, v4-a)
     """
     from server.repos import economy
-    economy.upsert_base(market=market, context=context, content=content)
+    economy.upsert_base(
+        market=market, context=context, content=content,
+        cycle_phase=cycle_phase, scenario_probs=scenario_probs,
+    )
     return {"ok": True, "market": market, "updated": _row_safe(economy.get_base(market))}
 
 
@@ -1295,6 +1331,15 @@ def save_industry(
     market_specific: dict | None = None,
     score: int | None = None,
     content: str | None = None,
+    cycle_phase: str | None = None,
+    momentum_rs_3m: float | None = None,
+    momentum_rs_6m: float | None = None,
+    leader_followers: dict | None = None,
+    avg_per: float | None = None,
+    avg_pbr: float | None = None,
+    avg_roe: float | None = None,
+    avg_op_margin: float | None = None,
+    vol_baseline_30d: float | None = None,
 ) -> dict:
     """
     industries 테이블에 upsert. None 필드는 기존 값 유지 (COALESCE).
@@ -1306,6 +1351,18 @@ def save_industry(
 
     Research 재작성:
       - 전체 content 덮어쓰기
+
+    v4 (2026-05) 신규 인자:
+      - cycle_phase: '도입' | '성장' | '성숙' | '쇠퇴' (산업 사이클 단계, v4-c)
+      - momentum_rs_3m / momentum_rs_6m: 산업 ETF 의 KOSPI/SPY 대비 RS (%, v4-d)
+      - leader_followers: {"leaders": [...], "followers": [...]} (Top 3 리더 + 팔로워, v4-e)
+
+    v6 (2026-05) 신규 인자 — 산업 표준 메트릭 (종목 financial_grade 본문 판단 근거):
+      - avg_per: 산업 평균 PER
+      - avg_pbr: 산업 평균 PBR
+      - avg_roe: 산업 평균 ROE (%)
+      - avg_op_margin: 산업 평균 영업이익률 (%)
+      - vol_baseline_30d: 산업 평균 30일 RV (%)
     """
     from server.repos import industries
     industries.upsert(
@@ -1313,6 +1370,13 @@ def save_industry(
         name_en=name_en, parent_code=parent_code,
         meta=meta, market_specific=market_specific,
         score=score, content=content,
+        cycle_phase=cycle_phase,
+        momentum_rs_3m=momentum_rs_3m,
+        momentum_rs_6m=momentum_rs_6m,
+        leader_followers=leader_followers,
+        avg_per=avg_per, avg_pbr=avg_pbr,
+        avg_roe=avg_roe, avg_op_margin=avg_op_margin,
+        vol_baseline_30d=vol_baseline_30d,
     )
     return {"ok": True, "code": code, "updated": _row_safe(industries.get_industry(code))}
 
@@ -1340,6 +1404,13 @@ def save_weekly_review(
     next_week_actions: list | None = None,
     headline: str | None = None,
     content: str | None = None,
+    # v7 (2026-05): 결론 정량 컬럼 (G6 결정)
+    rule_win_rates: dict | None = None,
+    pattern_findings: list | None = None,
+    lessons_learned: list | None = None,
+    next_week_emphasize: list | None = None,
+    next_week_avoid: list | None = None,
+    override_freq_30d: dict | None = None,
 ) -> dict:
     """
     주간 회고 저장 (upsert).
@@ -1351,6 +1422,14 @@ def save_weekly_review(
     - rule_evaluations: [{rule, trade_id, foregone_pnl, smart_or_early, ...}]
     - highlights: [{type: 'insight'|'pattern'|'warning', detail}]
     - next_week_actions: portfolio_summary.action_plan 과 동일 스키마
+
+    v7 신규 결론 정량 인자:
+      rule_win_rates: {rule_id: win_rate} — 15 룰 카탈로그 기준
+      pattern_findings: [{tag, description, sample_count, win_rate}]
+      lessons_learned: [{tag, lesson}]
+      next_week_emphasize: 강화 룰 ID list (이번 주 win-rate 높은)
+      next_week_avoid: 자제 룰 ID list (이번 주 win-rate < 30%)
+      override_freq_30d: {dimension: count} — 30일 override 활성화 빈도
 
     None 인 필드는 기존 값 유지 (COALESCE).
     """
@@ -1374,6 +1453,12 @@ def save_weekly_review(
         next_week_actions=next_week_actions,
         headline=headline,
         content=content,
+        rule_win_rates=rule_win_rates,
+        pattern_findings=pattern_findings,
+        lessons_learned=lessons_learned,
+        next_week_emphasize=next_week_emphasize,
+        next_week_avoid=next_week_avoid,
+        override_freq_30d=override_freq_30d,
     )
     return {"ok": True, "week_start": week_start, "week_end": week_end}
 
@@ -1394,6 +1479,135 @@ def list_weekly_reviews(limit: int = 12) -> list[dict]:
     from server.repos import weekly_reviews as wr
     rows = wr.list_reviews(limit=limit)
     return [r for r in (_row_safe(row) for row in rows) if r is not None]
+
+
+# v7 (2026-05): learned_patterns MCP — 자연어 인사이트 → 정량 메모리 (G6 결정)
+
+@mcp.tool
+def get_learned_patterns(status: str | None = None, limit: int = 50) -> list[dict]:
+    """learned_patterns 조회 (promotion_status 별 필터). last_seen DESC.
+
+    status: 'observation' | 'rule_candidate' | 'principle' | 'user_principle' | None (전체)
+    per-stock-analysis 6단계 LLM 판단에서 user_principle / principle 카테고리 우선 인용.
+    """
+    from server.repos import learned_patterns
+    rows = learned_patterns.list_by_status(status=status, limit=limit)
+    return [r for r in (_row_safe(row) for row in rows) if r is not None]
+
+
+@mcp.tool
+def append_learned_pattern(
+    tag: str,
+    description: str,
+    *,
+    outcome: str | None = None,
+    trade_id: int | None = None,
+    related_rule_ids: list[int] | None = None,
+) -> dict:
+    """패턴 발견 시 호출. 기존 tag 면 occurrences/sample_count/win_rate 누적, 신규면 INSERT.
+
+    weekly_review 작성 시 LLM 이 패턴 인사이트마다 본 함수 호출 의무 (v7 학습 본체).
+
+    outcome: 'win' | 'loss' | 'neutral' (None 이면 sample_count 미증가, 관찰만)
+    """
+    from server.repos import learned_patterns
+    learned_patterns.append(
+        tag, description,
+        outcome=outcome, trade_id=trade_id,
+        related_rule_ids=related_rule_ids,
+    )
+    return {"ok": True, "tag": tag, "row": _row_safe(learned_patterns.get_by_tag(tag))}
+
+
+# v8 (2026-05): weekly_strategy MCP — 5번째 모드 (사용자 + LLM 브레인스토밍)
+
+@mcp.tool
+def save_weekly_strategy(
+    week_start: str,
+    *,
+    market_outlook: str | None = None,
+    focus_themes: list | None = None,
+    rules_to_emphasize: list | None = None,
+    rules_to_avoid: list | None = None,
+    position_targets: dict | None = None,
+    risk_caps: dict | None = None,
+    notes: str | None = None,
+    brainstorm_log: str | None = None,
+) -> dict:
+    """주간 전략 저장 (upsert). approved_at 자동 NOW().
+
+    week_start: 'YYYY-MM-DD' 월요일 (KST)
+
+    인자:
+      market_outlook: 자연어 시장관 (cycle_phase 인용)
+      focus_themes: 산업/테마 list (예: ["반도체", "AI인프라"])
+      rules_to_emphasize: 강화 룰 ID list (rule_catalog 기준)
+      rules_to_avoid: 자제 룰 ID list (지난주 win-rate < 30%)
+      position_targets: {신규: [...], 청산: [...], 비중: {kr, us}}
+      risk_caps: {single_trade_pct, sector_max, cash_min}
+      notes: 사용자 자율 코멘트
+      brainstorm_log: LLM 1~3 옵션 제시 + 사용자 검토 대화 로그
+    """
+    from datetime import date as date_cls
+    from server.repos import weekly_strategy as ws
+
+    wd = date_cls.fromisoformat(week_start)
+    ws.upsert(
+        week_start=wd,
+        market_outlook=market_outlook,
+        focus_themes=focus_themes,
+        rules_to_emphasize=rules_to_emphasize,
+        rules_to_avoid=rules_to_avoid,
+        position_targets=position_targets,
+        risk_caps=risk_caps,
+        notes=notes,
+        brainstorm_log=brainstorm_log,
+    )
+    return {"ok": True, "week_start": week_start, "row": _row_safe(ws.get_by_week(wd))}
+
+
+@mcp.tool
+def get_weekly_strategy(week_start: str | None = None) -> dict | None:
+    """주간 전략 조회.
+
+    week_start: 'YYYY-MM-DD' 월요일 (KST). None 이면 이번 주 (오늘 기준 월요일).
+    미작성 시 직전 작성 row + carry_over=True 플래그 (5단계 brainstorm 절차의 carry-over 정책).
+    """
+    from datetime import date as date_cls
+    from server.repos import weekly_strategy as ws
+
+    if week_start is None:
+        result = ws.get_current()
+        return _row_safe(result) if result else None
+
+    wd = date_cls.fromisoformat(week_start)
+    row = ws.get_by_week(wd)
+    if row:
+        return {**_row_safe(row), "carry_over": False}
+    return None
+
+
+@mcp.tool
+def list_weekly_strategies(weeks: int = 12) -> list[dict]:
+    """최근 N주 weekly_strategy 목록 (week_start DESC).
+
+    brainstorm 시 1단계 인풋 — 지난 4~12주 strategies 인용해서 사용자 행동 패턴 추출.
+    """
+    from server.repos import weekly_strategy as ws
+    rows = ws.list_strategies(weeks=weeks)
+    return [r for r in (_row_safe(row) for row in rows) if r is not None]
+
+
+@mcp.tool
+def promote_learned_pattern(tag: str, new_status: str) -> dict:
+    """promotion_status 갱신. 'observation' → 'rule_candidate' → 'principle' / 'user_principle'.
+
+    user_principle 격상은 사용자가 weekly_strategy 에서 반복 강조한 패턴에 적용.
+    principle 격상은 시스템 통계 (occurrences ≥ N + win_rate 임계 이상) 자동 후보 발견 시.
+    """
+    from server.repos import learned_patterns
+    learned_patterns.promote(tag, new_status)
+    return {"ok": True, "tag": tag, "row": _row_safe(learned_patterns.get_by_tag(tag))}
 
 
 @mcp.tool
@@ -2321,70 +2535,40 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
     return _json_safe(out)
 
 
-# 변동성×재무 12셀 매트릭스 (~/.claude/skills/stock/references/scoring-weights.md)
-_CELL_MATRIX: dict[tuple[str, str], dict] = {
-    ("A", "normal"):  {"size": "풀",   "pyramiding": 3, "stop_pct": -10, "stop_method": "%"},
-    ("A", "high"):    {"size": "풀",   "pyramiding": 2, "stop_pct":  -8, "stop_method": "%"},
-    ("A", "extreme"): {"size": "70%",  "pyramiding": 1, "stop_pct":  -6, "stop_method": "ATR×2"},
-    ("B", "normal"):  {"size": "풀",   "pyramiding": 2, "stop_pct":  -8, "stop_method": "%"},
-    ("B", "high"):    {"size": "70%",  "pyramiding": 1, "stop_pct":  -7, "stop_method": "%"},
-    ("B", "extreme"): {"size": "50%",  "pyramiding": 0, "stop_pct":  -5, "stop_method": "ATR×1.5"},
-    ("C", "normal"):  {"size": "70%",  "pyramiding": 1, "stop_pct":  -7, "stop_method": "%"},
-    ("C", "high"):    {"size": "50%",  "pyramiding": 1, "stop_pct":  -6, "stop_method": "%"},
-    ("C", "extreme"): {"size": "30%",  "pyramiding": 0, "stop_pct":  -5, "stop_method": "ATR×1"},
-    ("D", "normal"):  {"size": "50%",  "pyramiding": 0, "stop_pct":  -6, "stop_method": "%"},
-    ("D", "high"):    {"size": "30%",  "pyramiding": 0, "stop_pct":  -5, "stop_method": "%"},
-    ("D", "extreme"): {"size": "비추",  "pyramiding": 0, "stop_pct":  -5, "stop_method": "비추"},
-}
-
-
-def _derive_cell(financial_score: int | None, vol_regime: str | None) -> dict | None:
-    """변동성×재무 12셀 룩업 (deterministic)."""
-    if financial_score is None or vol_regime is None:
-        return None
-    if financial_score >= 80:
-        fin_tier = "A"
-    elif financial_score >= 60:
-        fin_tier = "B"
-    elif financial_score >= 40:
-        fin_tier = "C"
-    else:
-        fin_tier = "D"
-    vol_tier = vol_regime if vol_regime in ("normal", "high", "extreme") else "high"
-    cell = dict(_CELL_MATRIX.get((fin_tier, vol_tier), {}))
-    cell["fin_tier"] = fin_tier
-    cell["vol_tier"] = vol_tier
-    cell["financial_score"] = financial_score
-    return cell
-
-
 @mcp.tool
 def analyze_position(code: str) -> dict:
     """
-    종목별 16카테고리 분석 일괄 묶음 — LLM이 부분 스킵 못하도록 1회 호출에 강제 포함.
+    종목별 raw 데이터 분석 일괄 묶음 — LLM이 부분 스킵 못하도록 1회 호출에 강제 포함.
 
-    포함 카테고리 (10개 종목 단위 + 6개 포트 단위는 별도):
+    포함 카테고리 (9개 raw):
       1. context        — get_stock_context (base + position + watch + daily)
       2. realtime       — KIS/Naver 자동 분기 현재가
       3. indicators     — compute_indicators 12지표
-      4. signals        — compute_signals 12전략 + chart_analysis (VCP/SEPA)
-      5. financials     — compute_financials (KR DART)
+      4. signals        — compute_signals 12전략 + summary.종합
+      5. financials     — compute_financials raw (ratios + growth + raw_summary, score 제거)
       6. flow           — analyze_flow (KR 기관/외인 z-score)
       7. volatility     — analyze_volatility (regime/DD)
       8. events         — detect_events (52w/실적/등급)
-      9. scoring        — compute_score breakdown
-      10. consensus     — get_analyst_consensus + analyze_consensus_trend + reports
+      9. consensus      — get_analyst_consensus + analyze_consensus_trend + reports
 
     포트 단위 (별도 호출): regime, correlation, concentration, weekly_context, momentum, sensitivity.
+
+    ⚠️ 제거됨 (LLM 본문 판단으로 위임 — per-stock-analysis.md 가이드):
+      - scoring (total_score / grade / breakdown) — score anchor 금지
+      - cell (12셀 자동 derive) — LLM 본문 판단으로 셀 결정
+      - is_stale (만기 자체 판정) — check_base_freshness 단일 진입점
+      - financials.score — raw ratios + growth 만 노출
+
+    종목 1건 분석 단일 진입점: references/per-stock-analysis.md (7단계 절차)
 
     반환:
       {
         "code","name","market",
         "context":{...}, "realtime":{...}, "indicators":{...}, "signals":{...},
         "financials":{...}, "flow":{...}, "volatility":{...}, "events":{...},
-        "scoring":{...}, "consensus":{...},
+        "consensus":{...},
         "errors": {category: error_msg, ...},
-        "categories_succeeded": N, "categories_total": 10,
+        "categories_succeeded": N, "categories_total": 9,
         "coverage_pct": float,
       }
     """
@@ -2398,7 +2582,7 @@ def analyze_position(code: str) -> dict:
 
     bundle: dict = {"code": code, "name": name, "market": market, "errors": {}}
     success = 0
-    total = 10
+    total = 9
 
     def _ohlcv() -> pd.DataFrame:
         if market == "kr":
@@ -2517,10 +2701,11 @@ def analyze_position(code: str) -> dict:
             for k, v in q_growth.items():
                 if v is not None:
                     growth[k] = v
+        # score 변수는 health_summary 의 인자로 내부 사용. 응답에는 노출 X (per-stock-analysis score anchor 금지 가이드)
         score = compute_financial_score(ratios, growth)
         bundle["financials"] = {
             "code": code, "market": market,
-            "ratios": ratios, "growth": growth, "score": score,
+            "ratios": ratios, "growth": growth,
             "health_summary": summarize_health(ratios, growth, score),
             "raw_summary": summary,
         }
@@ -2588,32 +2773,7 @@ def analyze_position(code: str) -> dict:
     except Exception as e:
         bundle["errors"]["events"] = str(e)
 
-    # 9) scoring (compute_score 위임 — 인라인 호출)
-    try:
-        sb = stock_base.get_base(code)
-        if not sb:
-            bundle["scoring"] = {"error": "stock_base not found"}
-            bundle["errors"]["scoring"] = "stock_base not found"
-        else:
-            ind = industries.get_industry(s_row.get("industry_code")) if s_row.get("industry_code") else None
-            applied = score_weights.get_applied(code, "swing")
-            bundle["scoring"] = {
-                "code": code,
-                "timeframe": "swing",
-                "total_score": sb.get("total_score"),
-                "grade": sb.get("grade"),
-                "breakdown": {
-                    "financial": sb.get("financial_score"),
-                    "industry": (ind.get("score") if ind else None) or sb.get("industry_score"),
-                    "economy": sb.get("economy_score"),
-                },
-                "weights": applied,
-            }
-            success += 1
-    except Exception as e:
-        bundle["errors"]["scoring"] = str(e)
-
-    # 10) consensus
+    # 9) consensus
     try:
         cons = analyst.get_consensus(code)
         reports = analyst.list_recent(code, days=90)
@@ -2634,50 +2794,7 @@ def analyze_position(code: str) -> dict:
     except Exception as e:
         bundle["errors"]["consensus"] = str(e)
 
-    # 11) Auto-derive: cell (변동성×재무 12셀, deterministic)
-    # 우선순위: stock_base.financial_score (research 기반, 신뢰도↑)
-    #          → compute_financials.score (default 50, 데이터 부족 시 fallback)
-    try:
-        sb = stock_base.get_base(code)
-        fin_score = sb.get("financial_score") if sb else None
-        if fin_score is None and isinstance(bundle.get("financials"), dict):
-            fin_score = bundle["financials"].get("score")
-        vol_regime = None
-        if isinstance(bundle.get("volatility"), dict):
-            vol_regime = bundle["volatility"].get("regime")
-        bundle["cell"] = _derive_cell(fin_score, vol_regime)
-    except Exception as e:
-        bundle["cell"] = None
-        bundle["errors"]["cell"] = str(e)
-
-    # 12) Auto-derive: is_stale per-dim (economy/industry/stock)
-    try:
-        from datetime import date as _date_cls
-        today = _date_cls.today()
-
-        def _stale(updated_at, expiry: int) -> bool:
-            if not updated_at:
-                return True
-            try:
-                return (today - updated_at.date()).days >= expiry
-            except Exception:
-                return True
-
-        sb_row = stock_base.get_base(code)
-        ind_code = s_row.get("industry_code")
-        ind_row = industries.get_industry(ind_code) if ind_code else None
-        econ_row = economy.get_base("kr" if market == "kr" else "us")
-
-        bundle["is_stale"] = {
-            "stock": _stale(sb_row.get("updated_at") if sb_row else None, 30),
-            "industry": _stale(ind_row.get("updated_at") if ind_row else None, 7) if ind_code else None,
-            "economy": _stale(econ_row.get("updated_at") if econ_row else None, 1),
-        }
-    except Exception as e:
-        bundle["errors"]["is_stale"] = str(e)
-        bundle["is_stale"] = None
-
-    # 13) Coverage 임계값 경고 (<80% 시 ⚠️)
+    # 10) Coverage 임계값 경고 (<80% 시 ⚠️)
     bundle["categories_succeeded"] = success
     bundle["categories_total"] = total
     coverage = round(100 * success / total, 1) if total else 0.0

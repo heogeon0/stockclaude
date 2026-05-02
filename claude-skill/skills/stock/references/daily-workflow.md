@@ -22,15 +22,16 @@
 | 8 | 2 | 시장 국면 판정 | `detect_market_regime()` |
 | 9 | 2 | 당일 매크로 / 뉴스 | `WebSearch("YYYY-MM-DD 한국/미국 주식 주요 이슈")` 최소 1회 |
 | 10 | 2 | `economy/{오늘}.md` | 없으면 즉시 자동 생성 (`economy-daily-template.md`) |
-| 11 | 3 | **종목별 16 카테고리 묶음** ⭐ | `analyze_position(code)` — #1 결과의 `all_codes` 전부 1회 |
-| 12 | 3 | **종목별 당일 뉴스** | `WebSearch` 보유 종목 각각 1회 (→ `websearch-rules.md`) |
+| 11 | 3 | **종목별 per-stock-analysis 7단계** ⭐ | `references/per-stock-analysis.md` 절차를 #1 결과의 `all_codes` 전부 1회 따라감 (analyze_position raw + base 조회 + WebSearch + LLM 판단 + 저장) |
+| 12 | 3 | **(per-stock-analysis 의 5단계 WebSearch 안에 포함됨)** | 별도 호출 X. 절차 위반 (per-stock 5단계 누락) 시 ⚠️ 반쪽 daily |
+| 13 | 1 | **월요일 weekly_strategy 점검** (v8) | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. 사용자 명시 `/stock-weekly-strategy` 호출 안내 (자동 트리거 X). carry_over=True 면 보고서 최상단에 표기 |
 
 **⭐ #1**: `list_daily_positions()` — Active + Pending 일괄 반환. Pending 도 daily 생성.
 **⭐ #2** (강제): `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 메인 inline 처리 — `references/base-*-update-inline.md` (옛 sub-agent 폐기, 2026-04-30).
 
 > ⛔ **stale 발견 시 강제 진입**. 옛 sub-agent 시절엔 메인이 spawn 호출만 하면 sync wait 로 자동 처리됐지만, inline 화 후엔 메인이 능동 진입 필수. **"효율 우선"·"1일 정도 무시" 스킵 금지** — 매일 강제 갱신이 sub-agent 폐기 결정의 전제 조건임. 스킵하려면 사용자 명시 승인 필요.
 **⭐ #5/#6**: 오늘 trades 인지 누락 시 typical bug — executed 매매를 pending 으로 잘못 기재.
-**⭐ #11**: `analyze_position(code)` 1회로 16 카테고리 중 10개 묶음 반환 (context/realtime/indicators/signals/financials/flow/volatility/events/scoring/consensus). 별도 호출 금지 — 토큰 절약.
+**⭐ #11**: 종목 1건당 `references/per-stock-analysis.md` 의 7단계 절차를 그대로 따른다. 그 안에서 base 조회 + `analyze_position` (raw 9 카테고리) + WebSearch + LLM 판단 + 저장이 통합 처리됨. 별도 carving 금지.
 
 긴급 시엔 `/stock-daily --fast` 명시로만 일부 스킵 허용.
 
@@ -58,17 +59,20 @@
 │ Phase 2: 시장·매크로 컨텍스트                                 │
 │   detect_market_regime() + economy/{오늘}.md                │
 ├─────────────────────────────────────────────────────────────┤
-│ Phase 3: 종목별 묶음 분석 (Active + Pending 순회)             │
+│ Phase 3: 종목별 per-stock-analysis 순회 (Active + Pending)   │
 │   for code in all_codes:                                    │
-│     analyze_position(code) → 16 카테고리 묶음 + cell 자동   │
+│     references/per-stock-analysis.md 7단계 절차 그대로 적용 │
+│       (base 조회 + analyze_position raw + WebSearch +       │
+│        LLM 판단 + save_daily_report)                        │
 │     coverage_pct < 80% → ⚠️ 반쪽 분석 표기                  │
 ├─────────────────────────────────────────────────────────────┤
-│ Phase 4: 분류 (Cell + Verdict)                               │
-│   cell = 변동성×재무 12셀 자동 derive                       │
-│   verdict = signals.summary.종합                            │
+│ Phase 4: LLM 본문 판단 (Cell + Verdict, 자동 derive 없음)     │
+│   cell = LLM 이 변동성 regime + 재무 본문 grade 로 판단     │
+│   verdict = signals.summary.종합 (1차) + LLM override 가능  │
 ├─────────────────────────────────────────────────────────────┤
-│ Phase 5: 액션 결정 (LLM 판단 + decision-tree.md)             │
-│   → references/decision-tree.md 참조                        │
+│ Phase 5: 액션 결정 (LLM 본문 판단 + master-principles)        │
+│   → references/master-principles.md 의 10 카테고리 인용     │
+│     (구체 수치 X, 케이스별 산업 평균 대비 본문 판단)        │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 6: 게이트 (deterministic)                               │
 │   check_concentration / 예수금 / 실적 D-7 / 수급 z 검증     │
@@ -116,27 +120,23 @@
 
 ---
 
-## 종목별 — `analyze_position(code)` 1회 호출 (10 카테고리 묶음)
+## 종목별 — `references/per-stock-analysis.md` 7단계 절차 적용
 
-1. context (base + position + watch + daily)
-2. realtime (KIS / Naver 자동 분기 종가)
-3. indicators (12 지표 — RSI/MACD/BB/MA/ATR/Stoch/ADX/일목)
-4. signals (12 전략 + chart_analysis VCP/SEPA)
-5. financials (DART KR — 경고 자동)
-6. flow (KR 기관/외인 z-score)
-7. volatility (realized/parkinson/regime/DD)
-8. events (52w 돌파 / 실적 D-N / 등급변경)
-9. scoring (5 차원 등급)
-10. consensus (컨센 + 추세 + 리포트)
+종목 1건 분석 단일 진입점. 본문은 옮기지 않음 — 절차서 직접 인용.
 
-→ 반환에 `coverage_pct`, `categories_succeeded/total`, `errors` 포함. coverage < 100% 시 ⚠️ 표시.
+요약:
+1. base 신선도 체크 → 2. stale 갱신 (cascade) → 3. base 조회 (3층) → 4. `analyze_position(code)` raw 9 카테고리 → 5. WebSearch → 6. LLM 판단 → 7. `save_daily_report`
 
-### 포트 단위 — 별도 호출
+`analyze_position` 응답 카테고리 (raw 9):
+context / realtime / indicators / signals / financials raw (score 제거) / flow / volatility / events / consensus.
+**제거됨**: scoring / cell / is_stale (LLM 본문 판단 위임) / financials.score.
 
-- `detect_market_regime` (regime)
-- `portfolio_correlation(days=60)` (correlation + effective_holdings)
-- `detect_portfolio_concentration` (concentration)
-- `get_weekly_context(weeks=4)` (backtest 룰 win-rate)
+### 포트 단위 — 별도 호출 (per-stock-analysis 외부)
+
+- `detect_market_regime` (Phase 2 — regime)
+- `portfolio_correlation(days=60)` (Phase 6 — correlation + effective_holdings)
+- `detect_portfolio_concentration` (Phase 6 — concentration)
+- `get_weekly_context(weeks=4)` (Phase 1 — backtest 룰 win-rate)
 - `rank_momentum(codes=[...])` (선택)
 
 ---
@@ -241,7 +241,7 @@ JSON 스키마: → `snapshot-schema.md` 참조.
 ## 보조 파일 인덱스 (이 워크플로우)
 
 references:
-- `decision-tree.md` — Phase 5 액션 결정 가이드라인
+- `master-principles.md` — Phase 5 액션 결정의 거장 원칙 (v6 신설, 옛 decision-tree 대체)
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 룰 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차

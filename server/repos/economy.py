@@ -14,7 +14,11 @@ from server.db import get_conn
 def get_base(market: str) -> dict[str, Any] | None:
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT market, context, content, updated_at, expires_at FROM economy_base WHERE market = %s",
+            """
+            SELECT market, context, content, cycle_phase, scenario_probs,
+                   updated_at, expires_at
+              FROM economy_base WHERE market = %s
+            """,
             (market,),
         )
         return cur.fetchone()
@@ -25,6 +29,8 @@ def upsert_base(
     *,
     context: dict | None = None,
     content: str | None = None,
+    cycle_phase: str | None = None,
+    scenario_probs: dict | None = None,
 ) -> None:
     # context NOT NULL 제약 대응: None이면 기존 값 유지 (없으면 {})
     if context is None:
@@ -34,13 +40,22 @@ def upsert_base(
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO economy_base (market, context, content) VALUES (%s, %s, %s)
+            INSERT INTO economy_base (market, context, content, cycle_phase, scenario_probs)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (market) DO UPDATE SET
-              context = COALESCE(EXCLUDED.context, economy_base.context),
-              content = COALESCE(EXCLUDED.content, economy_base.content),
-              updated_at = now()
+              context        = COALESCE(EXCLUDED.context, economy_base.context),
+              content        = COALESCE(EXCLUDED.content, economy_base.content),
+              cycle_phase    = COALESCE(EXCLUDED.cycle_phase, economy_base.cycle_phase),
+              scenario_probs = COALESCE(EXCLUDED.scenario_probs, economy_base.scenario_probs),
+              updated_at     = now()
             """,
-            (market, Jsonb(context) if context is not None else None, content),
+            (
+                market,
+                Jsonb(context) if context is not None else None,
+                content,
+                cycle_phase,
+                Jsonb(scenario_probs) if scenario_probs is not None else None,
+            ),
         )
 
 

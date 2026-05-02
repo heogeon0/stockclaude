@@ -68,6 +68,17 @@ CREATE TABLE industries (
   market_specific JSONB NOT NULL DEFAULT '{}'::jsonb, -- 시장별 특화 도피장
   score SMALLINT CHECK (score BETWEEN 0 AND 100),
   content TEXT,
+  -- v4 (2026-05): base inline 절차 깊이 강화 — 산업 사이클 / 모멘텀 / 리더 메타
+  cycle_phase TEXT CHECK (cycle_phase IN ('도입','성장','성숙','쇠퇴') OR cycle_phase IS NULL),
+  momentum_rs_3m NUMERIC,                              -- 산업 ETF/지수의 KOSPI/SPY 대비 3개월 상대 강도 (%)
+  momentum_rs_6m NUMERIC,                              -- 6개월 상대 강도 (%)
+  leader_followers JSONB,                              -- {"leaders": [...], "followers": [...]}
+  -- v6 (2026-05): 산업 표준 메트릭 — 종목 financial_grade 결정 시 산업 평균 대비 본문 판단 근거
+  avg_per NUMERIC,                                     -- 산업 평균 PER
+  avg_pbr NUMERIC,                                     -- 산업 평균 PBR
+  avg_roe NUMERIC,                                     -- 산업 평균 ROE (%)
+  avg_op_margin NUMERIC,                               -- 산업 평균 영업이익률 (%)
+  vol_baseline_30d NUMERIC,                            -- 산업 평균 30일 realized volatility (%)
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ
 );
@@ -84,6 +95,9 @@ CREATE TABLE economy_base (
   market TEXT PRIMARY KEY CHECK (market IN ('kr','us')),
   context JSONB NOT NULL DEFAULT '{}'::jsonb,         -- {금리_환경, 환율_수혜, 경기_사이클, 유동성, 지정학, 외국인_수급, VI_수준, ...}
   content TEXT,
+  -- v4 (2026-05): base inline 절차 깊이 강화 — 사이클 / 시나리오 트리
+  cycle_phase TEXT CHECK (cycle_phase IN ('확장','정점','수축','저점') OR cycle_phase IS NULL),
+  scenario_probs JSONB,                                -- {"bull": 0.30, "base": 0.50, "bear": 0.20}
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ
 );
@@ -186,6 +200,13 @@ CREATE TABLE stock_daily (
   signals JSONB NOT NULL DEFAULT '[]'::jsonb,         -- [{전략, 시그널, 조건, 진입가, 손절가, 가중치}, ...]
   verdict TEXT CHECK (verdict IN ('강한매수','매수우세','중립','매도우세','강한매도')),
   content TEXT,
+  -- v7 (2026-05): 결론 정량 컬럼 (G6 결정: 추론 자연어, 결론 정량)
+  size_pct INT,                                       -- LLM 결정 진입 사이즈 % (NULL 허용)
+  stop_method TEXT CHECK (stop_method IN ('%','ATR') OR stop_method IS NULL),
+  stop_value NUMERIC,                                 -- -7 (% 손절) 또는 1.5 (ATR 배수)
+  override_dimensions JSONB,                          -- ["earnings_d7", "consensus_upward", ...]
+  key_factors JSONB,                                  -- [{factor, comment}, ...] 결정 영향 큰 요소 3~5개
+  referenced_rules JSONB,                             -- [rule_id, ...] rule_catalog 인용 list
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, code, date)
 );

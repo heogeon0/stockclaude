@@ -219,19 +219,42 @@ def upsert_content(
     date: date_cls,
     content: str,
     verdict: str | None = None,
+    *,
+    # v7 (2026-05): 결론 정량 컬럼 (G6 결정)
+    size_pct: int | None = None,
+    stop_method: str | None = None,
+    stop_value: float | None = None,
+    override_dimensions: list | None = None,
+    key_factors: list | None = None,
+    referenced_rules: list | None = None,
 ) -> None:
-    """content + verdict (선택) 동시 upsert.
+    """content + verdict + 결론 정량 (선택) 동시 upsert.
 
     verdict 가 None 이면 기존 값 유지 (COALESCE). 신규 row 면 NULL.
+    v7 정량 컬럼도 None 시 기존 값 유지.
     """
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO stock_daily (user_id, code, date, content, verdict)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO stock_daily (user_id, code, date, content, verdict,
+                                     size_pct, stop_method, stop_value,
+                                     override_dimensions, key_factors, referenced_rules)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id, code, date) DO UPDATE SET
               content = EXCLUDED.content,
-              verdict = COALESCE(EXCLUDED.verdict, stock_daily.verdict)
+              verdict = COALESCE(EXCLUDED.verdict, stock_daily.verdict),
+              size_pct = COALESCE(EXCLUDED.size_pct, stock_daily.size_pct),
+              stop_method = COALESCE(EXCLUDED.stop_method, stock_daily.stop_method),
+              stop_value = COALESCE(EXCLUDED.stop_value, stock_daily.stop_value),
+              override_dimensions = COALESCE(EXCLUDED.override_dimensions, stock_daily.override_dimensions),
+              key_factors = COALESCE(EXCLUDED.key_factors, stock_daily.key_factors),
+              referenced_rules = COALESCE(EXCLUDED.referenced_rules, stock_daily.referenced_rules)
             """,
-            (user_id, code, date, content, verdict),
+            (
+                user_id, code, date, content, verdict,
+                size_pct, stop_method, stop_value,
+                Jsonb(override_dimensions) if override_dimensions is not None else None,
+                Jsonb(key_factors) if key_factors is not None else None,
+                Jsonb(referenced_rules) if referenced_rules is not None else None,
+            ),
         )

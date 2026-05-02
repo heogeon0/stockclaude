@@ -49,14 +49,24 @@ WebSearch 표준 쿼리 (필요 분만):
 표준 템플릿: → `~/.claude/skills/stock/assets/industry-base-template.md` (있다면) 참조.
 
 base 본문 구조:
-1. **Frontmatter** — 산업 등급 / 사이클 / 핵심 변수
+1. **Frontmatter** — 산업 등급 / 사이클 / 핵심 변수 + cycle_phase + RS + leader_followers
 2. 섹터 개요 / 사이클
 3. 시장 점유율 (Top 5 + 추이)
 4. 규제 / 정책
 5. 경쟁 구도 / M&A
 6. 기술 트렌드
 7. (옵션) 산업 평균 PER / PBR
-8. **📝 Daily Appended Facts** — 통합 후 비움
+8. ⭐ **사이클 단계 (도입 / 성장 / 성숙 / 쇠퇴)** ← v4-c 신설
+   - 4단계 중 1개 명시 + 근거 (매출 성장률 / capex / R&D 비중 / 진입사 수)
+   - 단계별 평균 PER 밴드 + 권장 포지션 사이즈 가이드 (도입=고밸류 변동/소액, 성장=주력, 성숙=배당/방어, 쇠퇴=피함)
+9. ⭐ **산업 모멘텀 (RS / 자금 흐름)** ← v4-d 신설
+   - Relative Strength: 산업 ETF/지수 대비 KOSPI/SPY 상대 강도 (3M / 6M / 1Y) — 수치 명시
+   - 자금 흐름: 기관/외국인 누적 순매수 추이 (KRX/Finnhub 인용 가능 시)
+   - 임계: RS 상위 30% = Overweight / 하위 30% = Underweight / 중간 = Neutral
+10. ⭐ **리더 / 팔로워 분류** ← v4-e 신설
+    - 산업 내 시총 / 매출 / 마진 기준 Top 3 리더 + 신흥 도전자 (팔로워) 2~3개
+    - 리더 vs 팔로워의 일반적 valuation 갭 + 그 갭이 정상 범위인지 판정
+11. **📝 Daily Appended Facts** — 통합 후 비움
 
 산업 분류: → `~/.claude/skills/stock/references/industry-sectors.md` (KR 11 + US GICS 11).
 
@@ -79,7 +89,7 @@ base 본문 구조:
 
 ---
 
-## 4단계 — 메타 5키 + score + 저장
+## 4단계 — 메타 5키 + score + cycle_phase + RS + leader_followers + 저장
 
 ```python
 save_industry(
@@ -87,7 +97,7 @@ save_industry(
     name='반도체',
     market='kr',                  # 'kr' | 'us'
     parent_code=None,
-    content=<완성된 8 섹션 본문>,
+    content=<완성된 11 섹션 본문>,
     meta={
         '사이클': '확장' | '회복' | '둔화' | '침체',
         '점유율_변화': '집중' | '분산' | '안정',
@@ -99,10 +109,33 @@ save_industry(
         # KR 또는 US 특이사항 (선택)
     },
     score=85,  # 0-100, industry_score (compute_score 의 산업 차원이 이 값을 사용)
+    # v4 (2026-05) 신규 인자 — DB 컬럼
+    cycle_phase='성장',                 # '도입' | '성장' | '성숙' | '쇠퇴'
+    momentum_rs_3m=18.5,                # KOSPI/SPY 대비 3M RS (%, 양수=outperform)
+    momentum_rs_6m=24.2,                # 6M RS (%)
+    leader_followers={
+        'leaders': ['005930', '000660'],
+        'followers': ['009830'],
+    },
+    # v6 (2026-05) 신규 인자 — 산업 표준 메트릭 (종목 financial_grade 본문 판단 근거)
+    avg_per=15.3,                       # 산업 평균 PER
+    avg_pbr=1.85,                       # 산업 평균 PBR
+    avg_roe=12.4,                       # 산업 평균 ROE (%)
+    avg_op_margin=14.2,                 # 산업 평균 영업이익률 (%)
+    vol_baseline_30d=28.5,              # 산업 평균 30일 RV (%)
 )
 ```
 
+⚠️ v6 산업 표준 메트릭 작성 의무:
+- 산업 Top 5~15 종목의 PER / PBR / ROE / 영업이익률 / RV 평균 산출 (WebSearch + DART/EDGAR)
+- 이 값이 종목 분석 시 financial_grade 결정의 anchor — 정확성 중요
+- 누락 시 종목 분석에서 절대값 anchor 로 회귀 위험
+
 `score` 가 메인 LLM 의 정성 판단치 — 후속 종목 점수 계산 (`compute_score`) 의 산업 차원으로 직접 사용된다. **0/None 금지** (디폴트 50 fallback 이지만 회피).
+
+⚠️ score / meta.사이클 / cycle_phase 정합성 점검:
+- meta.사이클 (정성 4종) 과 cycle_phase (4단계 명시) 가 충돌하지 않게 일관성 유지
+- score 는 LLM 본문 판단 결과, cycle_phase + RS 는 정량 데이터 — 둘이 서로 보완
 
 ---
 
@@ -128,10 +161,13 @@ assert result['score'] == <저장값>
 
 ## ✅ 완료 체크리스트
 
-- [ ] 8 섹션 (Frontmatter 포함) 모두 작성
+- [ ] 11 섹션 (Frontmatter + 사이클 단계 + RS 모멘텀 + 리더/팔로워 포함) 모두 작성
 - [ ] 메타 5키 모두 채움 + `score` 0~100 (None/0 금지)
-- [ ] `save_industry(...)` 호출 성공
-- [ ] `get_industry(code)` read-back — `updated_at` 갱신 + `score` 일치 확인
+- [ ] `cycle_phase` 1개 명시 (도입/성장/성숙/쇠퇴)
+- [ ] `momentum_rs_3m` / `momentum_rs_6m` 수치 명시 (정성 표현 X)
+- [ ] `leader_followers` Top 3 리더 + 팔로워 2~3개 명시
+- [ ] `save_industry(...)` 호출 성공 (새 인자 4개 포함)
+- [ ] `get_industry(code)` read-back — `updated_at` 갱신 + `score` / `cycle_phase` 일치 확인
 - [ ] Daily Appended Facts 비움 + last full review 갱신
 
 ## 완료 시 메인이 정리할 것
