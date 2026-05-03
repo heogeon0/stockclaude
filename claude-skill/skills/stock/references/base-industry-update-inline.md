@@ -18,7 +18,7 @@ name: 산업 코드 (KR 한글 슬러그 또는 us-{gics_sector_slug})
 
 ## 0단계 — 진입 가드
 
-- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 산업/종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 8 섹션을 처음부터 작성**.
+- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 산업/종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 11 섹션을 처음부터 작성 (Frontmatter + 사이클 단계 + RS 모멘텀 + 리더/팔로워 — v4 신설 포함)**.
 - **정형 MCP 우선** — 산업 평균 메트릭은 `compute_industry_metrics` 1회로 자동 산출. 5 차원 본문(점유율/규제/M&A/기술/사이클)은 정형 미커버라 WebSearch 권장.
 - 한 번의 호출 = 한 산업. 여러 산업 stale 이면 산업별로 절차를 따로따로 실행.
 
@@ -48,7 +48,7 @@ site:bloomberg.com OR site:reuters.com "{산업}" M&A YYYY
 
 ---
 
-## 2단계 — 본문 재작성 (8 섹션)
+## 2단계 — 본문 재작성 (11 섹션 — v4 사이클 단계/RS 모멘텀/리더 팔로워 포함)
 
 표준 템플릿: → `~/.claude/skills/stock/assets/industry-base-template.md` (있다면) 참조.
 
@@ -193,4 +193,4 @@ assert result['score'] == <저장값>
 
 ---
 
-> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 industry 본문에 끌어오지 않는다. 깨끗한 상태로 8 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `industries` 행은 7일 동안 daily/research/종목 base 작성 시 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
+> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 industry 본문에 끌어오지 않는다. 깨끗한 상태로 11 섹션을 처음부터 작성 (Frontmatter + 사이클 단계 + RS 모멘텀 + 리더/팔로워 — v4 신설 포함)한다. **섹션 압축·생략 금지** — `industries` 행은 7일 동안 daily/research/종목 base 작성 시 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
