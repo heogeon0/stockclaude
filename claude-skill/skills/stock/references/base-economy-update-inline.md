@@ -17,7 +17,7 @@ market: "kr" | "us"
 
 ## 0단계 — 의존성 / 진입 가드
 
-- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오 등) 를 economy 본문에 인용하지 않음. **깨끗한 상태로 8 섹션을 처음부터 작성**.
+- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오 등) 를 economy 본문에 인용하지 않음. **깨끗한 상태로 10 섹션을 처음부터 작성 (Frontmatter + 8 본문 + Daily Facts — v4 시나리오 트리/사이클 단계 포함)**.
 - **정형 MCP 우선** — 1단계 표의 "MCP" 컬럼이 1차 소스. WebSearch 는 정형 미커버 nuance(발언 톤·지정학·시장 해석) 발견 시 LLM 자율 호출.
 - 본 절차 진행 중 daily/research 본문에 매크로 결과를 추가 inline 작성하지 말 것 (저장 후 daily 가 `get_economy_base` 로 다시 읽음).
 
@@ -49,7 +49,7 @@ site:bok.or.kr OR site:edaily.co.kr 금통위 결정 YYYY-MM
 
 ---
 
-## 2단계 — 본문 재작성 (8 섹션)
+## 2단계 — 본문 재작성 (10 섹션 — v4 시나리오 트리/사이클 단계 포함)
 
 표준 템플릿: → `~/.claude/skills/stock/assets/economy-base-template.md` (있다면) 참조. 없으면 아래 구조 그대로.
 
@@ -191,4 +191,4 @@ assert result['updated_at'] > <save 호출 직전 시각>
 
 ---
 
-> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 economy 본문에 끌어오지 않는다. 깨끗한 상태로 8 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `economy_base` 는 1일 동안 daily/research/discover 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
+> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 economy 본문에 끌어오지 않는다. 깨끗한 상태로 10 섹션을 처음부터 작성 (Frontmatter + 8 본문 + Daily Facts — v4 시나리오 트리/사이클 단계 포함)한다. **섹션 압축·생략 금지** — `economy_base` 는 1일 동안 daily/research/discover 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
