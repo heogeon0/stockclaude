@@ -3228,7 +3228,7 @@ def prepare_weekly_review_per_stock(
               FROM trades t
               LEFT JOIN rule_catalog rc ON t.rule_id = rc.id
              WHERE t.user_id = %s AND t.code = %s
-               AND t.executed_at::date BETWEEN %s AND %s
+               AND (t.executed_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN %s AND %s
              ORDER BY t.executed_at
             """,
             (uid, code, ws, we),
@@ -3350,7 +3350,8 @@ def prepare_weekly_review_per_stock(
             SELECT id, broker, analyst, published_at, rating, rating_change,
                    target_price, previous_target_price, summary, key_thesis
               FROM analyst_reports
-             WHERE code = %s AND published_at::date BETWEEN %s AND %s
+             WHERE code = %s
+               AND (published_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN %s AND %s
              ORDER BY published_at DESC
             """,
             (code, ws, we),
@@ -3362,8 +3363,9 @@ def prepare_weekly_review_per_stock(
             SELECT id, event_type, event_date, payload, processed
               FROM events
              WHERE user_id = %s AND code = %s
-               AND COALESCE(event_date, created_at::date) BETWEEN %s AND %s
-             ORDER BY COALESCE(event_date, created_at::date) DESC
+               AND COALESCE(event_date, (created_at AT TIME ZONE 'Asia/Seoul')::date)
+                   BETWEEN %s AND %s
+             ORDER BY COALESCE(event_date, (created_at AT TIME ZONE 'Asia/Seoul')::date) DESC
             """,
             (uid, code, ws, we),
         )
@@ -3604,7 +3606,7 @@ def prepare_weekly_review_portfolio(
                 SELECT rule_id, count(*) AS n
                   FROM trades
                  WHERE user_id = %s
-                   AND executed_at::date BETWEEN %s AND %s
+                   AND (executed_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN %s AND %s
                    AND rule_id IS NOT NULL
                  GROUP BY rule_id
                 """,
@@ -3817,6 +3819,7 @@ def propose_base_narrative_revision(
     target_key: str,
     divergence_summary: str,
     evidence_trades: list[int] | None = None,
+    week_start: str | None = None,
 ) -> dict:
     """base.narrative 수정 후보 큐 등록 (자동 적용 X — 사용자 검토).
 
@@ -3825,9 +3828,11 @@ def propose_base_narrative_revision(
       target_key: economy 면 market, industry 면 code, stock 면 code
       divergence_summary: 회고 발견 사실 요약 (예: "us-tech base decisive 시 헤지 30% 이내 룰 신설 후보")
       evidence_trades: 근거 trade_id 리스트
+      week_start: 'YYYY-MM-DD' 회고 대상 주 월요일 (KST). None 시 today 기준 이번 주 월요일 추론.
+                   지연 회고 안전장치 — 옛 주 회고 시 명시 전달 권장.
 
     저장 위치:
-      이번 주 weekly_reviews.phase3_log.proposed_revisions JSONB 배열.
+      해당 주 weekly_reviews.phase3_log.proposed_revisions JSONB 배열.
       get_pending_base_revisions(weeks=4) 로 일일 리마인드 (BLOCKING #14 후보).
     """
     from datetime import date as date_cls, timedelta
@@ -3837,8 +3842,17 @@ def propose_base_narrative_revision(
         return {"ok": False, "error": f"invalid target_type: {target_type}"}
 
     today = date_cls.today()
-    # 이번 주 월요일 산출
-    week_start = today - timedelta(days=today.weekday())
+    if week_start is not None:
+        try:
+            ws_in = date_cls.fromisoformat(week_start)
+            if ws_in.weekday() != 0:
+                return {"ok": False, "error": f"week_start 는 월요일이어야 함: {week_start} (weekday={ws_in.weekday()})"}
+            week_start = ws_in
+        except ValueError as e:
+            return {"ok": False, "error": f"invalid week_start: {e}"}
+    else:
+        # 이번 주 월요일 추론 (지연 회고 시 잘못된 주 적재 위험 — 명시 전달 권장)
+        week_start = today - timedelta(days=today.weekday())
     uid = settings.stock_user_id
 
     revision = {

@@ -1,7 +1,7 @@
 # Daily Workflow — 일일 운영 절차
 
 > stock skill 의 daily 모드 진입 시 따라야 할 워크플로우.
-> v2 7-Phase Pipeline + BLOCKING 12 + 종목별 묶음 분석 + 매매 룰.
+> v2 7-Phase Pipeline + BLOCKING 14 + 종목별 묶음 분석 + 매매 룰.
 > SKILL.md 본문은 호출 정책만 명시, 상세 절차는 이 파일에 분리.
 
 ---

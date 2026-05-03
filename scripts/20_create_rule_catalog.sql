@@ -47,5 +47,7 @@ INSERT INTO rule_catalog (id, enum_name, category, description, display_order) V
   -- 관리 3
   (13, '집중도25%회수',      'manage', '단일 통화/섹터 비중 25%+ 도달 시 차주 강세 종목 부분 청산',              13),
   (14, 'ATR손절',           'manage', 'ATR 1.5~2x 손절선 이탈 시 전량 청산',                                   14),
-  (15, '컨센하향청산',        'manage', '애널 컨센 (TP / rating) 하향 발생 시 청산 또는 비중 축소',              15)
+  (15, '컨센하향청산',        'manage', '애널 컨센 (TP / rating) 하향 발생 시 청산 또는 비중 축소',              15),
+  -- 옛 trades 데이터 보강 (12_rule_category_add_earnings 의 enum 으로 추가됐던 룰)
+  (16, '실적D-1선제진입',      'entry',  '실적 발표 D-1 선제 분할 진입 (이벤트 헤지의 매수 측면)',                16)
 ON CONFLICT (id) DO NOTHING;
