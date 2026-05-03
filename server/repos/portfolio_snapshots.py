@@ -114,6 +114,25 @@ def get_latest(user_id: UUID) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def get_range(user_id: UUID, week_start: date_cls, week_end: date_cls) -> list[dict[str, Any]]:
+    """주간 회고용 — 한 주 5~7 row 시계열 조회.
+
+    라운드: 2026-05 weekly-review overhaul
+    prepare_weekly_review_portfolio 의 portfolio_timeseries 카테고리 데이터.
+    JSONB 컬럼 (per_stock_summary / risk_flags / action_plan / weights / sector_weights) 전체 포함.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT * FROM portfolio_snapshots
+             WHERE user_id = %s AND date BETWEEN %s AND %s
+             ORDER BY date ASC
+            """,
+            (user_id, week_start, week_end),
+        )
+        return cur.fetchall()
+
+
 def reconcile(user_id: UUID, date: date_cls) -> dict[str, Any]:
     """
     해당 date 의 action_plan 을 trades 와 매칭해 status 업데이트.

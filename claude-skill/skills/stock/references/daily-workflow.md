@@ -6,9 +6,9 @@
 
 ---
 
-## ⛔ BLOCKING — 시작 전 12개 체크
+## ⛔ BLOCKING — 시작 전 14개 체크
 
-`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 12 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
+`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 14 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
 
 | # | Phase | 체크 항목 | 호출 |
 |---|---|---|---|
@@ -25,6 +25,7 @@
 | 11 | 3 | **종목별 per-stock-analysis 7단계** ⭐ | `references/per-stock-analysis.md` 절차를 #1 결과의 `all_codes` 전부 1회 따라감 (analyze_position raw + base 조회 + WebSearch + LLM 판단 + 저장) |
 | 12 | 3 | **(per-stock-analysis 의 5단계 WebSearch 안에 포함됨)** | 별도 호출 X. 절차 위반 (per-stock 5단계 누락) 시 ⚠️ 반쪽 daily |
 | 13 | 1 | **월요일 weekly_strategy 점검** (v8) | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. 사용자 명시 `/stock-weekly-strategy` 호출 안내 (자동 트리거 X). carry_over=True 면 보고서 최상단에 표기 |
+| 14 | 1 | **base 미처리 narrative revision 큐 점검** (라운드 2026-05) | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 daily 보고서 **최상단 ⚠️ 알림 강제** ("미처리 base narrative revision N건 누적, `/base-stock {code}` 또는 `/base-industry` 처리 권장"). 회고 Phase 3 에서 적재된 사용자 큐 (contradictory + base_refresh_required 케이스) 가 daily 까지 누적되지 않도록 강제 |
 
 **⭐ #1**: `list_daily_positions()` — Active + Pending 일괄 반환. Pending 도 daily 생성.
 **⭐ #2** (강제): `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 메인 inline 처리 — `references/base-*-update-inline.md` (옛 sub-agent 폐기, 2026-04-30).

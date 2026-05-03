@@ -12,7 +12,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
-## 호출 인터페이스 (5 모드)
+## 호출 인터페이스 (6 모드)
 
 | 슬래시 | wrapper 위치 | 모드 | 워크플로우 |
 |---|---|---|---|
@@ -20,6 +20,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 | `/stock-discover` | `~/.claude/commands/stock-discover.md` | discover — 신규 종목 발굴 | `references/discover-workflow.md` |
 | `/stock-research` | `~/.claude/commands/stock-research.md` | research — 6차원 정량 분석 | `references/research-workflow.md` |
 | **`/stock-weekly-strategy`** | `~/.claude/commands/stock-weekly-strategy.md` | **weekly-strategy** — 사용자+LLM 브레인스토밍 (v8 신설) | `references/weekly-strategy-brainstorm.md` |
+| **`/stock-weekly-review`** | `~/.claude/commands/stock-weekly-review.md` | **weekly-review** — 4-Phase 종목별+종합+base 역반영 (라운드 2026-05 신설) | `references/weekly-review-workflow.md` |
 | `/base-economy` `/base-industry` `/base-stock` | `~/.claude/commands/base-*.md` | base 갱신 (수동 호출) | `references/base-*-update-inline.md` 절차 inline 실행 |
 
 각 wrapper 가 stock skill 의 해당 모드로 진입. 컨텍스트는 항상 stock skill 단일.
@@ -36,6 +37,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 | "base 갱신 / 만기 / 재작성 / Narrative / 펀더멘털 풀 분석" | **base 갱신 inline** | "삼성전자 base 갱신해줘" → 메인이 `references/base-stock-update-inline.md` 절차 직접 수행 |
 | "거시 / 금리 / 환율 / FOMC / 외국인 수급" | **base-economy inline** | "오늘 거시 어때?" → 메인이 `references/base-economy-update-inline.md` 절차 직접 수행 |
 | "이번 주 전략 / 주간 전략 / 월요일 전략 / 시장관 / 브레인스토밍" | **weekly-strategy** (v8) | "이번 주 어떻게 갈까?" → `references/weekly-strategy-brainstorm.md` 5단계 절차 진입 |
+| "이번 주 회고 / 주간 회고 / 리뷰 / 반성 / 회고하자 / 이번 주 평가" | **weekly-review** (라운드 2026-05) | "이번 주 회고해보자" → `references/weekly-review-workflow.md` 4-Phase 절차 진입 |
 
 **복합 요청** (예: "포트 점검하고 신규도 찾아줘") → daily 먼저, 끝난 뒤 discover 진입.
 **모호 시** → 사용자에게 한 번 확인 ("daily 모드로 진입할까요?").
@@ -119,6 +121,14 @@ RSI / Stoch / 52주 고가 이격 / ADX / 20MA 이격 / 변동성 / 거래량:
 - `industries.avg_per` / `avg_pbr` / `avg_roe` / `avg_op_margin` / `vol_baseline_30d` 인용
 - 종목 PER/ROE 가 산업 평균 대비 할인/프리미엄 여부로 grade 결정
 
+### ⛔ rule_catalog single source-of-truth (라운드 2026-05)
+
+- **DB `rule_catalog` 테이블이 매매 룰의 single source-of-truth** (16 active 룰, 참고 md: `references/rule-catalog.md`)
+- `prepare_weekly_review_per_stock` / `prepare_weekly_review_portfolio` MCP 응답의 **`rule_catalog_join` 카테고리 인용 의무** — LLM 이 ID/한글명 매핑 추론하지 말고 응답값 그대로 사용
+- **카탈로그 외 매매 패턴 발견 시 `register_rule(enum_name, category, description)` MCP 호출 후 진행** (BLOCKING — `record_trade` 직전에 처리)
+- `trades.rule_id` 명시 (옛 한글 enum `trades.rule_category` 는 옛 데이터 호환용 — 라운드 2026-05 마이그 후 신규 매매는 `rule_id` FK 만 사용)
+- 룰 폐기는 `deprecate_rule(rule_id, reason)` (soft delete: `status='deprecated'`)
+
 ### KR/US 시장 자동 라우팅
 
 종목명/티커로 market 식별:
@@ -198,8 +208,10 @@ inline 절차 완료 후 메인이 즉시:
     • 적용할 rule_category 의 누적 승률 < 50% → D+1 안착 룰 또는 추가 검증 강제
     • < 30% → 4주 누적 폐지 후보 (사용자 검토 권장)
 [ ] 변동성 + 재무 grade LLM 본문 판단 → master-principles 의 변동성 관리 / 재무 우량 원칙 적용
-[ ] ⭐ record_trade 시 rule_category 명시 — 카탈로그 15 룰 (references/rule-catalog.md)
-    • 카탈로그 외 매매 패턴 발견 시 카탈로그 확장 후 진행
+[ ] ⭐ record_trade 시 rule_id 명시 — DB rule_catalog 인용 (참고: references/rule-catalog.md)
+    • DB rule_catalog 테이블이 single source-of-truth (16 active 룰, 라운드 2026-05)
+    • 카탈로그 외 매매 패턴 발견 시 register_rule MCP 호출 후 진행 (BLOCKING)
+    • rule_category 한글 enum 은 옛 데이터 호환용 (신규 매매는 rule_id 명시)
 [ ] 집행 후 trades AFTER trigger 가 positions / cash_balance / realized_pnl 자동 재계산
 [ ] 필요 시 propose_watch_levels(persist=True) 로 감시 레벨 자동 생성
 ```

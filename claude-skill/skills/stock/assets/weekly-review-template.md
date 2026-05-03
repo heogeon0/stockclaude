@@ -1,5 +1,16 @@
 # 주간 회고 — Week of YYYY-MM-DD
 
+> ⚠️ **Deprecated (라운드 2026-05 weekly-review overhaul)** — 본 템플릿은 단일 파일 5섹션 구조로,
+> 4-Phase (Phase 0 base 갱신 / Phase 1 종목별 / Phase 2 종합 / Phase 3 base 역반영) 신 워크플로우 미지원.
+> 새 템플릿은 2개로 분할:
+> - `assets/weekly-review-per-stock-template.md` — Phase 1 종목별 8-step 출력
+> - `assets/weekly-review-portfolio-template.md` — Phase 2 종합 6-section 출력
+>
+> 절차서: `references/weekly-review-workflow.md` (4-Phase). slash: `/stock-weekly-review`.
+> 본 파일은 v7 라운드 산출물 — **참고/히스토리 보존 목적만** 유지 (신규 회고 작성 시 위 2 파일 인용).
+
+---
+
 > 템플릿. weekly_review 작성 시 복사 후 채움.
 > **추론은 자연어, 결론은 정량** (G6 원칙). 4 섹션 모두 작성 의무.
 

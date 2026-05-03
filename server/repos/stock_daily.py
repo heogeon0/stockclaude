@@ -198,6 +198,59 @@ def list_reports_on_date(
         return cur.fetchall()
 
 
+def get_recent_quant(
+    user_id: UUID,
+    code: str,
+    week_start: date_cls,
+    week_end: date_cls,
+) -> list[dict[str, Any]]:
+    """주간 회고용 — 종목 1건의 한 주 stock_daily 정량 6 컬럼 시계열.
+
+    라운드: 2026-05 weekly-review overhaul
+    OHLCV/지표 제외, v7 정량 6 컬럼 + verdict + signals + close 만 반환.
+    prepare_weekly_review_per_stock 의 stock_daily_quant_timeseries 카테고리.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT date, close, verdict, signals,
+                   size_pct, stop_method, stop_value,
+                   override_dimensions, key_factors, referenced_rules,
+                   content
+              FROM stock_daily
+             WHERE user_id = %s AND code = %s
+               AND date BETWEEN %s AND %s
+             ORDER BY date ASC
+            """,
+            (user_id, code, week_start, week_end),
+        )
+        return cur.fetchall()
+
+
+def get_quant_at_or_before(
+    user_id: UUID,
+    code: str,
+    target_date: date_cls,
+) -> dict[str, Any] | None:
+    """진입 시점 stock_daily 인용 — trades.executed_at 직전 row.
+
+    회고 시 "매매 직전 LLM 추천" 추적용.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT date, close, verdict, size_pct, stop_method, stop_value,
+                   override_dimensions, key_factors, referenced_rules
+              FROM stock_daily
+             WHERE user_id = %s AND code = %s AND date <= %s
+               AND verdict IS NOT NULL
+             ORDER BY date DESC LIMIT 1
+            """,
+            (user_id, code, target_date),
+        )
+        return cur.fetchone()
+
+
 def latest_report_date(user_id: UUID) -> date_cls | None:
     with get_conn() as conn:
         cur = conn.execute(

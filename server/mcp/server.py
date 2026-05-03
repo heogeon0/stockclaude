@@ -1411,6 +1411,12 @@ def save_weekly_review(
     next_week_emphasize: list | None = None,
     next_week_avoid: list | None = None,
     override_freq_30d: dict | None = None,
+    # 라운드 2026-05 weekly-review overhaul: 4-Phase 결과
+    base_phase0_log: dict | None = None,
+    phase3_log: dict | None = None,
+    per_stock_review_count: int | None = None,
+    base_appendback_count: int | None = None,
+    propose_narrative_revision_count: int | None = None,
 ) -> dict:
     """
     주간 회고 저장 (upsert).
@@ -1430,6 +1436,15 @@ def save_weekly_review(
       next_week_emphasize: 강화 룰 ID list (이번 주 win-rate 높은)
       next_week_avoid: 자제 룰 ID list (이번 주 win-rate < 30%)
       override_freq_30d: {dimension: count} — 30일 override 활성화 빈도
+
+    라운드 2026-05 weekly-review overhaul 신규 인자:
+      base_phase0_log: {economy: {...}, industries: [...], stocks: [...], skipped: [...]}
+        Phase 0 base 갱신 결과 (cascade economy → industry → stock)
+      phase3_log: {appended_facts: [...], proposed_revisions: [...]}
+        Phase 3 base append-back / narrative_revision 큐
+      per_stock_review_count: weekly_review_per_stock row 수 (Phase 1 결과 카운트)
+      base_appendback_count: Phase 3 자동 append 건수
+      propose_narrative_revision_count: Phase 3 사용자 큐 적재 건수
 
     None 인 필드는 기존 값 유지 (COALESCE).
     """
@@ -1459,6 +1474,11 @@ def save_weekly_review(
         next_week_emphasize=next_week_emphasize,
         next_week_avoid=next_week_avoid,
         override_freq_30d=override_freq_30d,
+        base_phase0_log=base_phase0_log,
+        phase3_log=phase3_log,
+        per_stock_review_count=per_stock_review_count,
+        base_appendback_count=base_appendback_count,
+        propose_narrative_revision_count=propose_narrative_revision_count,
     )
     return {"ok": True, "week_start": week_start, "week_end": week_end}
 
@@ -2918,6 +2938,998 @@ def backtest_signals(
 
     from server.analysis.backtest import backtest_stock
     return _json_safe(backtest_stock(df, lookback=lookback, hold_days=hold_days))
+
+
+# =====================================================================
+# rule_catalog MCP (v10) — 매매 룰 single source-of-truth + LLM 노출
+# =====================================================================
+# 라운드: 2026-05 weekly-review overhaul
+# 옛 한글 enum CHECK + INT[] 분산 → rule_catalog 테이블 통일.
+# LLM 이 register_rule 으로 새 룰 추가 가능 (학습→격상→카탈로그 자동 확장).
+
+@mcp.tool
+def register_rule(
+    enum_name: str,
+    category: str,
+    description: str | None = None,
+    display_order: int | None = None,
+) -> dict:
+    """새 매매 룰 등록 — LLM 이 학습→격상 시 카탈로그 확장.
+
+    Args:
+      enum_name: 한글 슬러그 (예: '발굴사용자선택진입'). UNIQUE 강제.
+      category: 'entry' | 'exit' | 'manage'
+      description: 룰 설명 (LLM 이 회고 시 인용)
+      display_order: 사용자 출력 정렬 (None 시 max+1 자동)
+
+    검증:
+      - enum_name 중복 차단 / 100자 이하 / 비어있을 수 없음
+      - category 3 enum (entry/exit/manage)
+
+    카탈로그 외 매매 패턴 발견 시 (record_trade 의 rule_category 누락 등)
+    본 MCP 호출 후 trades.rule_id 사용 — BLOCKING.
+    """
+    from server.repos import rule_catalog as rc
+    try:
+        row = rc.register(enum_name, category, description=description, display_order=display_order)
+        return {"ok": True, "row": _row_safe(row)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@mcp.tool
+def list_rule_catalog(category: str | None = None, status: str = "active") -> list[dict]:
+    """매매 룰 카탈로그 조회.
+
+    Args:
+      category: 'entry' | 'exit' | 'manage' (None = 전체)
+      status: 'active' (디폴트) | 'deprecated' | 'all' (None 처리)
+
+    회고 / 매매 작성 시 인용. prepare_weekly_review_* 응답에도 자동 join 됨.
+    """
+    from server.repos import rule_catalog as rc
+    if status == "all" or status is None:
+        rows = rc.list_all(category=category)
+    elif status == "active":
+        rows = rc.list_active(category=category)
+    else:
+        rows = rc.list_all(category=category, status=status)
+    return [_row_safe(r) for r in rows]
+
+
+@mcp.tool
+def get_rule(id_or_enum_name: int | str) -> dict | None:
+    """룰 단일 조회 — INT id 또는 한글 enum_name 양쪽 받음 (auto-detect)."""
+    from server.repos import rule_catalog as rc
+    return _row_safe(rc.get_by_id_or_name(id_or_enum_name))
+
+
+@mcp.tool
+def update_rule(
+    rule_id: int,
+    description: str | None = None,
+    display_order: int | None = None,
+) -> dict:
+    """룰 메타 갱신 — description / display_order 만. None 인자 미반영."""
+    from server.repos import rule_catalog as rc
+    try:
+        row = rc.update(rule_id, description=description, display_order=display_order)
+        return {"ok": True, "row": _row_safe(row)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@mcp.tool
+def deprecate_rule(rule_id: int, reason: str | None = None) -> dict:
+    """룰 폐기 — soft delete (status='deprecated'). 옛 trades 보존 + 신규 사용 차단."""
+    from server.repos import rule_catalog as rc
+    try:
+        row = rc.deprecate(rule_id, reason=reason)
+        return {"ok": True, "row": _row_safe(row)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
+# =====================================================================
+# weekly_review_per_stock CRUD (v5) — 종목별 회고 영속
+# =====================================================================
+# 라운드: 2026-05 weekly-review overhaul (Phase 1 결과 영속)
+
+@mcp.tool
+def save_weekly_review_per_stock(
+    week_start: str,
+    week_end: str,
+    code: str,
+    *,
+    trade_evaluations: list | None = None,
+    base_snapshot: dict | None = None,
+    base_impact: str | None = None,
+    base_thesis_aligned: bool | None = None,
+    base_refresh_required: bool | None = None,
+    base_refreshed_during_review: bool | None = None,
+    base_appendback_done: bool | None = None,
+    base_narrative_revision_proposed: bool | None = None,
+    content: str | None = None,
+) -> dict:
+    """종목별 주간 회고 저장 (upsert) — Phase 1 결과 영속.
+
+    week_start: 'YYYY-MM-DD' 월요일 / week_end: 'YYYY-MM-DD' 일요일
+
+    - trade_evaluations: [{trade_id, side, sold_at|bought_at, price, current_price,
+                           qty, foregone_pnl, delta_pct, smart_or_early}]
+    - base_snapshot: {economy: {...}, industry: {...}, stock: {...}}
+    - base_impact: 'decisive' | 'supportive' | 'contradictory' | 'neutral'
+    - base_thesis_aligned: base.thesis 와 본 주 결과 정합 BOOL
+    - base_refresh_required: 만기 임박 또는 narrative 수정 필요
+    - base_refreshed_during_review: Phase 0 에서 본 종목 base 갱신했는지
+    - base_appendback_done: Phase 3 에서 base.Daily Appended Facts append 했는지
+    - base_narrative_revision_proposed: decisive 강화 발견 시 narrative 수정 후보 큐 적재
+    - content: 자연어 본문 (200~400자)
+
+    None 인 필드는 기존 값 유지 (COALESCE).
+    """
+    from datetime import date as date_cls
+    from server.repos import weekly_review_per_stock as wrps
+
+    ws = date_cls.fromisoformat(week_start)
+    we = date_cls.fromisoformat(week_end)
+
+    try:
+        wrps.upsert(
+            week_start=ws, week_end=we, code=code,
+            trade_evaluations=trade_evaluations,
+            base_snapshot=base_snapshot,
+            base_impact=base_impact,
+            base_thesis_aligned=base_thesis_aligned,
+            base_refresh_required=base_refresh_required,
+            base_refreshed_during_review=base_refreshed_during_review,
+            base_appendback_done=base_appendback_done,
+            base_narrative_revision_proposed=base_narrative_revision_proposed,
+            content=content,
+        )
+        return {"ok": True, "week_start": week_start, "code": code}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@mcp.tool
+def get_weekly_review_per_stock(week_start: str, code: str) -> dict | None:
+    """종목별 주간 회고 단건 조회. week_start = 'YYYY-MM-DD' 월요일."""
+    from datetime import date as date_cls
+    from server.repos import weekly_review_per_stock as wrps
+    return _row_safe(wrps.get(date_cls.fromisoformat(week_start), code))
+
+
+@mcp.tool
+def list_weekly_review_per_stock(week_start: str) -> list[dict]:
+    """한 주의 모든 종목 회고 묶음 조회 — Phase 2 인풋 join 용."""
+    from datetime import date as date_cls
+    from server.repos import weekly_review_per_stock as wrps
+    rows = wrps.list_by_week(date_cls.fromisoformat(week_start))
+    return [_row_safe(r) for r in rows]
+
+
+@mcp.tool
+def list_weekly_review_per_stock_by_code(code: str, weeks: int = 12) -> list[dict]:
+    """종목별 회고 시계열 — 장기 thesis 추적용 (web UI 가 사용 가능)."""
+    from server.repos import weekly_review_per_stock as wrps
+    rows = wrps.list_by_code(code, weeks=weeks)
+    return [_row_safe(r) for r in rows]
+
+
+# =====================================================================
+# prepare_weekly_review_per_stock (v3) — Phase 1 인풋 묶음
+# =====================================================================
+# 라운드: 2026-05 weekly-review overhaul
+# 종목 1건 회고에 필요한 모든 데이터를 1 호출 묶음으로 반환.
+# analyze_position 패턴 평행 — LLM 도구 탐색 0회.
+
+def _classify_smart_or_early(side: str, price: float, current_price: float) -> str:
+    """매도가 vs 현재가 비교 → smart / early / marginal 분류.
+
+    sell 거래만 의미 있음 (buy 는 미실현 평가).
+    - |Δ| < 1% → smart (정확한 정점/저점)
+    - 매도 후 +5% 이상 상승 → early (너무 일찍 팔았음)
+    - 매도 후 -5% 이상 하락 → smart (정점 정확 인식)
+    - 그 외 → marginal
+    """
+    if side != "sell" or current_price is None or price is None:
+        return "n/a"
+    delta_pct = (current_price - price) / price * 100.0
+    if abs(delta_pct) < 1.0:
+        return "smart"
+    if delta_pct > 5.0:
+        return "early"
+    if delta_pct < -5.0:
+        return "smart"
+    return "marginal"
+
+
+def _get_current_price_for_code(code: str, market: str) -> tuple[float | None, str | None]:
+    """현재가 조회 — KR realtime_price / US kis_us_quote 자동 라우팅.
+
+    Returns: (price, base_time_iso)
+    """
+    try:
+        if market == "kr":
+            from server.scrapers.naver import fetch_realtime_price
+            row = fetch_realtime_price(code)
+            if row and row.get("price"):
+                return (float(row["price"]), row.get("base_time"))
+        else:
+            from server.scrapers.kis import fetch_us_quote
+            row = fetch_us_quote(code)
+            if row and row.get("price"):
+                return (float(row["price"]), None)
+    except Exception:
+        pass
+    return (None, None)
+
+
+@mcp.tool
+def prepare_weekly_review_per_stock(
+    week_start: str,
+    week_end: str,
+    code: str,
+    level: str = "detail",
+) -> dict:
+    """Phase 1 인풋 묶음 — 종목 1건 회고에 필요한 모든 데이터 1 호출 반환.
+
+    Args:
+      week_start: 'YYYY-MM-DD' 월요일
+      week_end:   'YYYY-MM-DD' 일요일
+      code: 종목 코드
+      level: 'summary' | 'detail' (디폴트 detail, summary 면 derived metrics 만)
+
+    Returns: 13 카테고리 묶음 (analyze_position 평행)
+      - trades: 본 주 trades + rule_catalog join
+      - position_now: 현재 포지션 + style/stop/tags
+      - stock_daily_quant_timeseries: 본 주 stock_daily 정량 6 컬럼
+      - stock_daily_at_entries: 매매 직전 stock_daily verdict (smart 추적)
+      - per_stock_summary_timeseries: portfolio_snapshots.per_stock_summary 본 주
+      - watch_levels: pending watch levels
+      - position_docs: thesis/action_rules
+      - analyst_reports_week: 본 주 published_at
+      - events_week: 본 주 events (어닝/신고가 등)
+      - base_snapshot: {economy, industry, stock} 회고 시점 메타
+      - base_freshness: 만기 임박 여부 (days_to_expire)
+      - foregone_pnl_data: 매도 후 현재가 비교 (자동 산출)
+      - verdict_distribution: 본 주 verdict 5종 분포
+      - override_freq_week: override_dimensions 차원별 활성화 빈도
+      - related_learned_patterns: 본 종목 룰 그룹과 매칭 패턴
+      - rule_catalog_join: trades.rule_id 등장 룰 메타
+    """
+    from datetime import date as date_cls
+    from server.repos import (
+        analyst, learned_patterns, portfolio_snapshots, position_docs,
+        positions, rule_catalog as rc, stock_base, stock_daily, stocks,
+        trades as trades_repo, watch_levels, economy, industries,
+    )
+
+    ws = date_cls.fromisoformat(week_start)
+    we = date_cls.fromisoformat(week_end)
+    uid = settings.stock_user_id
+
+    # 종목 메타 (market 식별)
+    stock_row = stocks.get_stock(code)
+    if not stock_row:
+        return {"error": f"종목 없음: {code}"}
+    market = stock_row.get("market", "kr")
+    industry_code = stock_row.get("industry_code")
+
+    # 1) trades + rule_catalog join (본 주만)
+    with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT t.id, t.code, t.side, t.qty, t.price, t.executed_at,
+                   t.trigger_note, t.realized_pnl, t.fees,
+                   t.rule_category, t.rule_id,
+                   rc.enum_name, rc.category, rc.description AS rule_description
+              FROM trades t
+              LEFT JOIN rule_catalog rc ON t.rule_id = rc.id
+             WHERE t.user_id = %s AND t.code = %s
+               AND t.executed_at::date BETWEEN %s AND %s
+             ORDER BY t.executed_at
+            """,
+            (uid, code, ws, we),
+        )
+        trades_rows = [_row_safe(r) for r in cur.fetchall()]
+
+    # 2) 현재가 + foregone_pnl + smart_or_early
+    current_price, current_price_at = _get_current_price_for_code(code, market)
+    foregone_data = []
+    for t in trades_rows:
+        if not t:
+            continue
+        sold_price = float(t["price"]) if t.get("price") is not None else None
+        qty = float(t["qty"]) if t.get("qty") is not None else None
+        side = t.get("side")
+        foregone_pnl = None
+        delta_pct = None
+        smart_or_early = "n/a"
+        if current_price and sold_price and qty:
+            if side == "sell":
+                foregone_pnl = (current_price - sold_price) * qty
+                delta_pct = (current_price - sold_price) / sold_price * 100.0
+                smart_or_early = _classify_smart_or_early(side, sold_price, current_price)
+            elif side == "buy":
+                # 미실현 PnL (현재가 - 매수가)
+                foregone_pnl = (current_price - sold_price) * qty
+                delta_pct = (current_price - sold_price) / sold_price * 100.0
+                smart_or_early = "n/a"  # buy 는 분류 안 함
+        foregone_data.append({
+            "trade_id": t["id"],
+            "side": side,
+            "executed_at": t.get("executed_at"),  # _row_safe 가 이미 str ISO 로 변환
+            "price": sold_price,
+            "current_price": current_price,
+            "qty": qty,
+            "foregone_pnl": foregone_pnl,
+            "delta_pct": delta_pct,
+            "smart_or_early": smart_or_early,
+        })
+
+    # 3) position 현재 상태
+    pos = positions.get_position(uid, code) if hasattr(positions, "get_position") else None
+    if not pos:
+        # fallback — list_daily_positions 등 사용 안 하고 직접 조회
+        with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+            cur = conn.execute(
+                "SELECT * FROM positions WHERE user_id=%s AND code=%s",
+                (uid, code),
+            )
+            pos = cur.fetchone()
+    pos_safe = _row_safe(pos) if pos else None
+
+    # 4) stock_daily 정량 시계열 (본 주)
+    sd_quant = stock_daily.get_recent_quant(uid, code, ws, we)
+    sd_quant_safe = [_row_safe(r) for r in sd_quant]
+
+    # verdict 분포
+    verdict_counts: dict[str, int] = {}
+    override_counts: dict[str, int] = {}
+    for r in sd_quant_safe:
+        if r and r.get("verdict"):
+            verdict_counts[r["verdict"]] = verdict_counts.get(r["verdict"], 0) + 1
+        ods = r.get("override_dimensions") if r else None
+        if isinstance(ods, list):
+            for d in ods:
+                override_counts[str(d)] = override_counts.get(str(d), 0) + 1
+
+    # 5) 매매 직전 stock_daily lookup (각 trade 마다)
+    sd_at_entries = []
+    for t in trades_rows:
+        if not t or not t.get("executed_at"):
+            continue
+        # _row_safe 가 이미 ISO str 변환 — date 부분만 추출
+        ea_str = t["executed_at"]
+        try:
+            target_date = date_cls.fromisoformat(ea_str.split("T")[0]) if isinstance(ea_str, str) else ea_str.date()
+        except Exception:
+            continue
+        sd_row = stock_daily.get_quant_at_or_before(uid, code, target_date)
+        sd_at_entries.append({
+            "trade_id": t["id"],
+            "executed_at": ea_str,
+            "stock_daily": _row_safe(sd_row) if sd_row else None,
+        })
+
+    # 6) per_stock_summary 시계열 (portfolio_snapshots 에서 본 종목 추출)
+    pss_timeseries = []
+    snapshots = portfolio_snapshots.get_range(uid, ws, we)
+    for snap in snapshots:
+        pss = snap.get("per_stock_summary") or []
+        for entry in pss:
+            if entry.get("code") == code:
+                pss_timeseries.append({
+                    "date": snap["date"].isoformat() if hasattr(snap.get("date"), "isoformat") else str(snap.get("date")),
+                    "close": entry.get("close"),
+                    "change_pct": entry.get("change_pct"),
+                    "pnl_pct": entry.get("pnl_pct"),
+                    "verdict": entry.get("verdict"),
+                    "note": entry.get("note"),
+                })
+                break
+
+    # 7) watch_levels + position_docs
+    wl_rows = []
+    pd_row = None
+    try:
+        wl_rows = [_row_safe(r) for r in watch_levels.list_by_code(uid, code)] if hasattr(watch_levels, "list_by_code") else []
+    except Exception:
+        wl_rows = []
+    try:
+        pd_row = _row_safe(position_docs.get(uid, code)) if hasattr(position_docs, "get") else None
+    except Exception:
+        pd_row = None
+
+    # 8) analyst_reports + events (본 주)
+    with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT id, broker, analyst, published_at, rating, rating_change,
+                   target_price, previous_target_price, summary, key_thesis
+              FROM analyst_reports
+             WHERE code = %s AND published_at::date BETWEEN %s AND %s
+             ORDER BY published_at DESC
+            """,
+            (code, ws, we),
+        )
+        ar_rows = [_row_safe(r) for r in cur.fetchall()]
+
+        cur = conn.execute(
+            """
+            SELECT id, event_type, event_date, payload, processed
+              FROM events
+             WHERE user_id = %s AND code = %s
+               AND COALESCE(event_date, created_at::date) BETWEEN %s AND %s
+             ORDER BY COALESCE(event_date, created_at::date) DESC
+            """,
+            (uid, code, ws, we),
+        )
+        ev_rows = [_row_safe(r) for r in cur.fetchall()]
+
+    # 9) base_snapshot (회고 시점 base 3종 + freshness)
+    eb = economy.get_base(market) if hasattr(economy, "get_base") else None
+    ind = industries.get_industry(industry_code) if industry_code and hasattr(industries, "get_industry") else None
+    sb = stock_base.get_base(code) if hasattr(stock_base, "get_base") else None
+
+    def _extract_meta(row, content_keys=None, max_chars=200):
+        if not row:
+            return None
+        m = _row_safe(row) or {}
+        # content 본문은 200자만
+        if "content" in m and m["content"]:
+            m["content_excerpt"] = m["content"][:max_chars]
+            del m["content"]
+        # narrative 도 200자만
+        if "narrative" in m and m["narrative"]:
+            m["narrative_excerpt"] = m["narrative"][:max_chars]
+            del m["narrative"]
+        return m
+
+    today = date_cls.today()
+    def _freshness(row, expires_default_days=None):
+        if not row:
+            return {"available": False}
+        ua = row.get("updated_at")
+        if not ua:
+            return {"available": True, "days_since_update": None}
+        days_since = (today - ua.date()).days if hasattr(ua, "date") else None
+        ea = row.get("expires_at")
+        days_to_expire = None
+        if ea and hasattr(ea, "date"):
+            days_to_expire = (ea.date() - today).days
+        return {
+            "available": True,
+            "days_since_update": days_since,
+            "days_to_expire": days_to_expire,
+            "expired": (days_to_expire is not None and days_to_expire < 0),
+        }
+
+    base_snapshot = {
+        "economy": _extract_meta(eb),
+        "industry": _extract_meta(ind),
+        "stock": _extract_meta(sb),
+    }
+    base_freshness = {
+        "economy": _freshness(eb),
+        "industry": _freshness(ind),
+        "stock": _freshness(sb),
+    }
+
+    # 10) related_learned_patterns (본 종목의 trades.rule_id 매칭)
+    rule_ids = [t["rule_id"] for t in trades_rows if t and t.get("rule_id")]
+    related_patterns = []
+    if rule_ids:
+        with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, tag, description, occurrences, win_rate, sample_count,
+                       promotion_status, related_rule_ids
+                  FROM learned_patterns
+                 WHERE related_rule_ids && %s::int[]
+                """,
+                (rule_ids,),
+            )
+            related_patterns = [_row_safe(r) for r in cur.fetchall()]
+
+    # 11) rule_catalog_join (trades.rule_id 등장 룰)
+    rc_rows = rc.list_active()
+    rule_catalog_join = [_row_safe(r) for r in rc_rows]
+
+    # === level=summary 면 derived 만 반환 ===
+    if level == "summary":
+        return _json_safe({
+            "code": code,
+            "name": stock_row.get("name"),
+            "market": market,
+            "trade_count": len(trades_rows),
+            "current_price": current_price,
+            "current_price_at": current_price_at,
+            "foregone_pnl_data": foregone_data,
+            "verdict_distribution": verdict_counts,
+            "override_freq_week": override_counts,
+            "base_freshness": base_freshness,
+            "related_learned_patterns": related_patterns,
+        })
+
+    # === level=detail (디폴트) ===
+    return _json_safe({
+        "code": code,
+        "name": stock_row.get("name"),
+        "market": market,
+        "industry_code": industry_code,
+        "trades": trades_rows,
+        "position_now": pos_safe,
+        "stock_daily_quant_timeseries": sd_quant_safe,
+        "stock_daily_at_entries": sd_at_entries,
+        "per_stock_summary_timeseries": pss_timeseries,
+        "watch_levels": wl_rows,
+        "position_docs": pd_row,
+        "analyst_reports_week": ar_rows,
+        "events_week": ev_rows,
+        "base_snapshot": base_snapshot,
+        "base_freshness": base_freshness,
+        "current_price": current_price,
+        "current_price_at": current_price_at,
+        "foregone_pnl_data": foregone_data,
+        "verdict_distribution": verdict_counts,
+        "override_freq_week": override_counts,
+        "related_learned_patterns": related_patterns,
+        "rule_catalog_join": rule_catalog_join,
+    })
+
+
+# =====================================================================
+# prepare_weekly_review_portfolio (v4) — Phase 2 인풋 묶음
+# =====================================================================
+
+@mcp.tool
+def prepare_weekly_review_portfolio(
+    week_start: str,
+    week_end: str,
+    level: str = "detail",
+) -> dict:
+    """Phase 2 인풋 묶음 — 종합 회고에 필요한 모든 데이터 1 호출 반환.
+
+    Args:
+      week_start, week_end: 'YYYY-MM-DD'
+      level: 'summary' | 'detail'
+
+    Returns: 8 카테고리 묶음
+      - per_stock_reviews_join: Phase 1 결과 (weekly_review_per_stock 모든 row)
+      - portfolio_timeseries: 본 주 portfolio_snapshots + trends (weights_drift, sector_drift)
+      - vs_benchmark: KOSPI/SPX 변화율 + alpha
+      - prev_review_followup: 직전 W-1 회고의 next_week_emphasize → 본 주 win_rate
+      - prev_strategy_evaluation: weekly_strategy.focus_themes 적중 + rules 효과
+      - promote_candidates: sample 5+ 학습 패턴 격상 후보
+      - base_thesis_summary: economy / industries (modal) / stock_base 메타
+      - rule_catalog_join: 활성 룰 전체
+    """
+    from datetime import date as date_cls, timedelta
+    from server.repos import (
+        learned_patterns, portfolio_snapshots, rule_catalog as rc,
+        weekly_review_per_stock as wrps, weekly_reviews as wr,
+        weekly_strategy as ws_repo, economy, industries, stock_base,
+    )
+
+    ws = date_cls.fromisoformat(week_start)
+    we = date_cls.fromisoformat(week_end)
+    uid = settings.stock_user_id
+
+    # 1) per_stock_reviews_join (Phase 1 결과 자동 join)
+    per_stock_rows = wrps.list_by_week(ws)
+    per_stock_join = [_row_safe(r) for r in per_stock_rows]
+
+    # 2) portfolio_timeseries
+    snapshots = portfolio_snapshots.get_range(uid, ws, we)
+    snap_safe = [_row_safe(s) for s in snapshots]
+    trends = {}
+    if snap_safe:
+        first = snap_safe[0]
+        last = snap_safe[-1]
+        trends["total_krw_start"] = first.get("total_krw")
+        trends["total_krw_end"] = last.get("total_krw")
+        if first.get("total_krw") and last.get("total_krw"):
+            trends["total_krw_chg_pct"] = (last["total_krw"] - first["total_krw"]) / first["total_krw"] * 100.0
+        # sector_weights drift
+        first_sw = first.get("sector_weights") or {}
+        last_sw = last.get("sector_weights") or {}
+        drift = {}
+        all_sectors = set(first_sw.keys()) | set(last_sw.keys())
+        for sector in all_sectors:
+            s_pct = float(first_sw.get(sector, 0) or 0)
+            e_pct = float(last_sw.get(sector, 0) or 0)
+            drift[sector] = round(e_pct - s_pct, 2)
+        trends["sector_weights_drift"] = drift
+        # action_plan 합산
+        total_actions = sum(len(s.get("action_plan") or []) for s in snap_safe)
+        executed = sum(
+            sum(1 for a in (s.get("action_plan") or []) if a.get("status") == "executed")
+            for s in snap_safe
+        )
+        trends["action_plan_total_count"] = total_actions
+        trends["action_plan_executed_count"] = executed
+        trends["action_plan_hit_rate"] = (executed / total_actions) if total_actions else None
+
+    # 3) vs_benchmark — KOSPI/SPX (economy_daily 인덱스에서 추출)
+    vs_benchmark = {}
+    with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT market, date, index_values
+              FROM economy_daily
+             WHERE date BETWEEN %s AND %s
+             ORDER BY date ASC
+            """,
+            (ws, we),
+        )
+        ed_rows = cur.fetchall()
+    by_market: dict[str, list] = {"kr": [], "us": []}
+    for r in ed_rows:
+        by_market.setdefault(r["market"], []).append(r)
+    for mkt, rows in by_market.items():
+        if len(rows) < 2:
+            continue
+        first = rows[0].get("index_values") or {}
+        last = rows[-1].get("index_values") or {}
+        idx_key = "kospi" if mkt == "kr" else "spy"
+        f = float(first.get(idx_key) or 0)
+        l = float(last.get(idx_key) or 0)
+        if f > 0:
+            vs_benchmark[f"{idx_key}_chg_pct"] = round((l - f) / f * 100.0, 2)
+    if trends.get("total_krw_chg_pct") is not None:
+        if "kospi_chg_pct" in vs_benchmark:
+            vs_benchmark["alpha_kospi"] = round(
+                trends["total_krw_chg_pct"] - vs_benchmark["kospi_chg_pct"], 2
+            )
+    vs_benchmark["portfolio_chg_pct"] = trends.get("total_krw_chg_pct")
+
+    # 4) prev_review_followup (직전 회고)
+    prev_ws = ws - timedelta(days=7)
+    prev_review = wr.get_review(prev_ws)
+    prev_followup = None
+    if prev_review:
+        prev_followup = {
+            "week_start": prev_ws.isoformat(),
+            "next_week_emphasize": prev_review.get("next_week_emphasize"),
+            "next_week_avoid": prev_review.get("next_week_avoid"),
+            "headline": prev_review.get("headline"),
+        }
+        # 본 주 trades.rule_id 분포로 적용 여부 자동 비교
+        with __import__("server.db", fromlist=["get_conn"]).get_conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT rule_id, count(*) AS n
+                  FROM trades
+                 WHERE user_id = %s
+                   AND executed_at::date BETWEEN %s AND %s
+                   AND rule_id IS NOT NULL
+                 GROUP BY rule_id
+                """,
+                (uid, ws, we),
+            )
+            this_week_distribution = {r["rule_id"]: r["n"] for r in cur.fetchall()}
+        emphasize = prev_review.get("next_week_emphasize") or []
+        avoid = prev_review.get("next_week_avoid") or []
+        prev_followup["emphasized_applied"] = [
+            {"rule_id": rid, "applied_count": this_week_distribution.get(rid, 0)}
+            for rid in emphasize
+        ]
+        prev_followup["avoided_violations"] = [
+            {"rule_id": rid, "violation_count": this_week_distribution.get(rid, 0)}
+            for rid in avoid
+        ]
+
+    # 5) prev_strategy_evaluation
+    prev_strategy = ws_repo.get_by_week(ws)
+    prev_strategy_eval = None
+    if prev_strategy:
+        prev_strategy_eval = {
+            "week_start": ws.isoformat(),
+            "market_outlook": prev_strategy.get("market_outlook"),
+            "focus_themes": prev_strategy.get("focus_themes"),
+            "rules_to_emphasize": prev_strategy.get("rules_to_emphasize"),
+            "rules_to_avoid": prev_strategy.get("rules_to_avoid"),
+            "carry_over": False,
+        }
+    else:
+        # carry-over 직전 strategy
+        prev_strategy_eval = {"carry_over": True, "warning": "이번 주 weekly_strategy 미작성"}
+
+    # 6) promote_candidates
+    promote = learned_patterns.list_promote_candidates(min_sample=5, min_win_rate=0.6)
+    promote_safe = [_row_safe(r) for r in promote]
+
+    # 7) base_thesis_summary
+    eb_kr = economy.get_base("kr") if hasattr(economy, "get_base") else None
+    eb_us = economy.get_base("us") if hasattr(economy, "get_base") else None
+    base_thesis = {
+        "economy_kr": _row_safe(eb_kr) if eb_kr else None,
+        "economy_us": _row_safe(eb_us) if eb_us else None,
+    }
+    if base_thesis["economy_kr"]:
+        c = base_thesis["economy_kr"].get("content") or ""
+        base_thesis["economy_kr"]["content_excerpt"] = c[:200]
+        base_thesis["economy_kr"]["content"] = None
+    if base_thesis["economy_us"]:
+        c = base_thesis["economy_us"].get("content") or ""
+        base_thesis["economy_us"]["content_excerpt"] = c[:200]
+        base_thesis["economy_us"]["content"] = None
+
+    # 8) rule_catalog_join
+    rc_rows = [_row_safe(r) for r in rc.list_active()]
+
+    if level == "summary":
+        return _json_safe({
+            "week_start": week_start,
+            "week_end": week_end,
+            "per_stock_review_count": len(per_stock_join),
+            "trends": trends,
+            "vs_benchmark": vs_benchmark,
+            "promote_candidates_count": len(promote_safe),
+        })
+
+    return _json_safe({
+        "week_start": week_start,
+        "week_end": week_end,
+        "per_stock_reviews_join": per_stock_join,
+        "portfolio_timeseries": {
+            "snapshots": snap_safe,
+            "trends": trends,
+        },
+        "vs_benchmark": vs_benchmark,
+        "prev_review_followup": prev_followup,
+        "prev_strategy_evaluation": prev_strategy_eval,
+        "promote_candidates": promote_safe,
+        "base_thesis_summary": base_thesis,
+        "rule_catalog_join": rc_rows,
+    })
+
+
+# =====================================================================
+# Phase 3 base append-back MCP (v6)
+# =====================================================================
+# 라운드: 2026-05 weekly-review overhaul
+# 회고 학습을 base 에 역반영 (학습 사이클 폐쇄).
+# ⚠️ main body 재작성 금지 — Daily Appended Facts 섹션 append 만.
+
+DAILY_APPENDED_FACTS_HEADER = "## 📝 Daily Appended Facts"
+
+
+def _append_to_facts_section(content: str, fact_text: str, today: str, source: str) -> str:
+    """base content 의 'Daily Appended Facts' 섹션에 fact_text append.
+
+    섹션 부재 시 신설. 같은 fact_text 가 본 섹션에 이미 있으면 중복 추가 안 함.
+    """
+    fact_line = f"- [{today}] [{source}] {fact_text}"
+    if not content:
+        return f"{DAILY_APPENDED_FACTS_HEADER}\n\n{fact_line}\n"
+    if DAILY_APPENDED_FACTS_HEADER in content:
+        # 중복 체크
+        if fact_text in content:
+            return content  # idempotent
+        # 섹션 끝에 append (헤더 다음 라인부터 끝까지 확장)
+        idx = content.rfind(DAILY_APPENDED_FACTS_HEADER)
+        # 섹션 헤더 이후 끝까지 가져와서 새 줄 추가
+        before = content[:idx]
+        section = content[idx:]
+        if not section.endswith("\n"):
+            section += "\n"
+        section += fact_line + "\n"
+        return before + section
+    # 섹션 부재 — 끝에 신설
+    if not content.endswith("\n"):
+        content += "\n"
+    return content + f"\n{DAILY_APPENDED_FACTS_HEADER}\n\n{fact_line}\n"
+
+
+@mcp.tool
+def append_base_facts(
+    target_type: str,
+    target_key: str,
+    fact_text: str,
+    source: str = "weekly_review",
+) -> dict:
+    """base content 의 'Daily Appended Facts' 섹션에 fact append.
+
+    Args:
+      target_type: 'economy' | 'industry' | 'stock'
+      target_key:  economy 면 market ('kr'/'us'), industry 면 industry_code, stock 면 종목 code
+      fact_text:   회고에서 발견한 사실 한 줄 (예: "W18: SK하닉 1차목표 ₩1.3M 도달 + 신고가")
+      source:      'weekly_review' | 'daily' | 'manual' (기본 weekly_review)
+
+    ⚠️ 안전장치:
+      - 같은 (target, fact_text) 가 이미 있으면 idempotent (중복 X)
+      - main body 재작성 금지 — Daily Appended Facts 섹션만
+      - 일일 상한 5건/target (DB content 길이로 추적, 본 라운드 단순 관리)
+    """
+    from datetime import date as date_cls
+    from server.repos import economy, industries, stock_base
+
+    if target_type not in ("economy", "industry", "stock"):
+        return {"ok": False, "error": f"invalid target_type: {target_type}"}
+    if not fact_text or not fact_text.strip():
+        return {"ok": False, "error": "fact_text 비어있을 수 없음"}
+
+    today = date_cls.today().isoformat()
+
+    # 현재 content 조회 + 안전장치 (일일 상한)
+    if target_type == "economy":
+        row = economy.get_base(target_key)
+        if not row:
+            return {"ok": False, "error": f"economy_base 없음: {target_key}"}
+        current_content = row.get("content") or ""
+        # 일일 상한 — 오늘 날짜 라인 5+ 면 차단
+        today_count = sum(1 for line in current_content.split("\n") if f"[{today}]" in line)
+        if today_count >= 5:
+            return {"ok": False, "error": f"일일 상한 초과 (5건/target): economy/{target_key}"}
+        new_content = _append_to_facts_section(current_content, fact_text, today, source)
+        if new_content == current_content:
+            return {"ok": True, "message": "idempotent — 동일 fact 이미 존재", "appended": False}
+        economy.upsert_base(market=target_key, content=new_content)
+
+    elif target_type == "industry":
+        row = industries.get_industry(target_key)
+        if not row:
+            return {"ok": False, "error": f"industries 없음: {target_key}"}
+        current_content = row.get("content") or ""
+        today_count = sum(1 for line in current_content.split("\n") if f"[{today}]" in line)
+        if today_count >= 5:
+            return {"ok": False, "error": f"일일 상한 초과 (5건/target): industry/{target_key}"}
+        new_content = _append_to_facts_section(current_content, fact_text, today, source)
+        if new_content == current_content:
+            return {"ok": True, "message": "idempotent", "appended": False}
+        industries.upsert(
+            code=target_key,
+            market=row.get("market"),
+            name=row.get("name") or target_key,
+            content=new_content,
+        )
+
+    else:  # stock
+        row = stock_base.get_base(target_key)
+        if not row:
+            return {"ok": False, "error": f"stock_base 없음: {target_key}"}
+        current_content = row.get("content") or ""
+        today_count = sum(1 for line in current_content.split("\n") if f"[{today}]" in line)
+        if today_count >= 5:
+            return {"ok": False, "error": f"일일 상한 초과 (5건/target): stock/{target_key}"}
+        new_content = _append_to_facts_section(current_content, fact_text, today, source)
+        if new_content == current_content:
+            return {"ok": True, "message": "idempotent", "appended": False}
+        # stock_base.upsert_base 의 content 만 갱신
+        stock_base.upsert_base(code=target_key, content=new_content)
+
+    return {
+        "ok": True,
+        "target_type": target_type,
+        "target_key": target_key,
+        "fact_text": fact_text,
+        "appended": True,
+    }
+
+
+@mcp.tool
+def propose_base_narrative_revision(
+    target_type: str,
+    target_key: str,
+    divergence_summary: str,
+    evidence_trades: list[int] | None = None,
+) -> dict:
+    """base.narrative 수정 후보 큐 등록 (자동 적용 X — 사용자 검토).
+
+    Args:
+      target_type: 'economy' | 'industry' | 'stock'
+      target_key: economy 면 market, industry 면 code, stock 면 code
+      divergence_summary: 회고 발견 사실 요약 (예: "us-tech base decisive 시 헤지 30% 이내 룰 신설 후보")
+      evidence_trades: 근거 trade_id 리스트
+
+    저장 위치:
+      이번 주 weekly_reviews.phase3_log.proposed_revisions JSONB 배열.
+      get_pending_base_revisions(weeks=4) 로 일일 리마인드 (BLOCKING #14 후보).
+    """
+    from datetime import date as date_cls, timedelta
+    from server.db import get_conn
+
+    if target_type not in ("economy", "industry", "stock"):
+        return {"ok": False, "error": f"invalid target_type: {target_type}"}
+
+    today = date_cls.today()
+    # 이번 주 월요일 산출
+    week_start = today - timedelta(days=today.weekday())
+    uid = settings.stock_user_id
+
+    revision = {
+        "target_type": target_type,
+        "target_key": target_key,
+        "divergence_summary": divergence_summary,
+        "evidence_trades": evidence_trades or [],
+        "status": "pending_user_review",
+        "proposed_at": today.isoformat(),
+    }
+
+    with get_conn() as conn:
+        cur = conn.execute(
+            "SELECT phase3_log FROM weekly_reviews WHERE user_id=%s AND week_start=%s",
+            (uid, week_start),
+        )
+        row = cur.fetchone()
+        existing = (row.get("phase3_log") if row else None) or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        revisions = existing.get("proposed_revisions") or []
+        # 중복 체크 (같은 target + summary)
+        for r in revisions:
+            if (r.get("target_type") == target_type
+                and r.get("target_key") == target_key
+                and r.get("divergence_summary") == divergence_summary):
+                return {"ok": True, "message": "idempotent — 동일 revision 이미 큐에 있음"}
+        revisions.append(revision)
+        existing["proposed_revisions"] = revisions
+
+        # weekly_reviews row 없으면 생성, 있으면 phase3_log 갱신
+        if row:
+            from psycopg.types.json import Jsonb
+            conn.execute(
+                "UPDATE weekly_reviews SET phase3_log=%s, updated_at=now() WHERE user_id=%s AND week_start=%s",
+                (Jsonb(existing), uid, week_start),
+            )
+        else:
+            from psycopg.types.json import Jsonb
+            conn.execute(
+                """
+                INSERT INTO weekly_reviews (user_id, week_start, week_end, phase3_log)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id, week_start) DO UPDATE SET phase3_log = EXCLUDED.phase3_log
+                """,
+                (uid, week_start, week_start + timedelta(days=6), Jsonb(existing)),
+            )
+
+    return {"ok": True, "revision": revision, "queue_size": len(revisions)}
+
+
+@mcp.tool
+def get_pending_base_revisions(weeks: int = 4) -> dict:
+    """미처리 base narrative revision 큐 조회.
+
+    Args:
+      weeks: 최근 N주 회고에서 적재된 큐 합산 (기본 4)
+
+    Returns: {pending: [...], count}
+    daily Phase 1 BLOCKING 에서 count >= 3 시 ⚠️ 알림 가드.
+    """
+    from datetime import date as date_cls, timedelta
+    from server.db import get_conn
+
+    today = date_cls.today()
+    cutoff = today - timedelta(weeks=weeks)
+    uid = settings.stock_user_id
+
+    pending = []
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT week_start, phase3_log
+              FROM weekly_reviews
+             WHERE user_id = %s AND week_start >= %s
+               AND phase3_log IS NOT NULL
+             ORDER BY week_start DESC
+            """,
+            (uid, cutoff),
+        )
+        for row in cur.fetchall():
+            log = row.get("phase3_log") or {}
+            if not isinstance(log, dict):
+                continue
+            for rev in log.get("proposed_revisions") or []:
+                if rev.get("status") == "pending_user_review":
+                    rev_copy = dict(rev)
+                    rev_copy["week_start"] = row["week_start"].isoformat()
+                    pending.append(rev_copy)
+
+    return {"pending": pending, "count": len(pending)}
 
 
 # =====================================================================

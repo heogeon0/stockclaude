@@ -114,6 +114,50 @@ def append(
             )
 
 
+def list_promote_candidates(
+    min_sample: int = 5,
+    min_win_rate: float = 0.6,
+) -> list[dict[str, Any]]:
+    """자동 격상 후보 — sample 5+ 도달 + win_rate 임계 이상.
+
+    라운드: 2026-05 weekly-review overhaul
+    Phase 2 회고 시 사용자에게 격상 제안 (자동 격상은 안 함).
+
+    promotion 룰:
+      - observation → rule_candidate: occurrences >= min_sample + win_rate >= min_win_rate
+      - rule_candidate → principle: occurrences >= min_sample*2 + win_rate >= min_win_rate + 0.1
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT id, tag, description, occurrences, win_rate, sample_count,
+                   first_seen, last_seen, promotion_status, related_rule_ids,
+                   CASE
+                     WHEN promotion_status = 'observation'
+                          AND sample_count >= %s
+                          AND COALESCE(win_rate, 0) >= %s
+                       THEN 'rule_candidate'
+                     WHEN promotion_status = 'rule_candidate'
+                          AND sample_count >= %s
+                          AND COALESCE(win_rate, 0) >= %s
+                       THEN 'principle'
+                     ELSE NULL
+                   END AS suggested_status
+              FROM learned_patterns
+             WHERE promotion_status IN ('observation','rule_candidate')
+               AND sample_count >= %s
+               AND COALESCE(win_rate, 0) >= %s
+             ORDER BY sample_count DESC, win_rate DESC NULLS LAST
+            """,
+            (
+                min_sample, min_win_rate,
+                min_sample * 2, min_win_rate + 0.1,
+                min_sample, min_win_rate,
+            ),
+        )
+        return [r for r in cur.fetchall() if r.get("suggested_status")]
+
+
 def promote(tag: str, new_status: str) -> None:
     """promotion_status 갱신. 'observation' → 'rule_candidate' → 'principle' / 'user_principle'."""
     if new_status not in ("observation", "rule_candidate", "principle", "user_principle"):
