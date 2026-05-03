@@ -81,6 +81,9 @@ def check_mcp_tools_kr() -> dict:
         "list_analyst_reports": _ping(s.list_analyst_reports, code, days=90),
         "analyze_consensus_trend": _ping(s.analyze_consensus_trend, code, days=90),
         "analyze_position": _ping(s.analyze_position, code),
+        "get_kr_disclosures": _ping(s.get_kr_disclosures, code, days=7),
+        "get_kr_insider_trades": _ping(s.get_kr_insider_trades, code),
+        "get_kr_major_shareholders": _ping(s.get_kr_major_shareholders, code),
     }
 
 
@@ -101,6 +104,8 @@ def check_mcp_tools_us() -> dict:
         "get_analyst_consensus": _ping(s.get_analyst_consensus, code),
         "analyze_consensus_trend": _ping(s.analyze_consensus_trend, code, days=90),
         "analyze_position": _ping(s.analyze_position, code),
+        "get_us_disclosures": _ping(s.get_us_disclosures, code, days=7),
+        "get_us_insider_trades": _ping(s.get_us_insider_trades, code, days=30),
     }
 
 
@@ -118,6 +123,12 @@ def check_mcp_tools_portfolio() -> dict:
         "detect_portfolio_concentration": _ping(s.detect_portfolio_concentration),
         "check_base_freshness": _ping(s.check_base_freshness),
         "get_weekly_context": _ping(s.get_weekly_context, weeks=4),
+        "get_macro_indicators_us": _ping(s.get_macro_indicators_us, ["DFF", "CPIAUCSL"]),
+        "get_macro_indicators_kr": _ping(s.get_macro_indicators_kr, ["722Y001"]),
+        "get_yield_curve": _ping(s.get_yield_curve),
+        "get_fx_rate": _ping(s.get_fx_rate),
+        "get_economic_calendar": _ping(s.get_economic_calendar),
+        "compute_industry_metrics": _ping(s.compute_industry_metrics, "반도체"),
     }
 
 

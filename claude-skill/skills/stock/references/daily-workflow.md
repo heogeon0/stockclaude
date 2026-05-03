@@ -1,38 +1,35 @@
 # Daily Workflow — 일일 운영 절차
 
 > stock skill 의 daily 모드 진입 시 따라야 할 워크플로우.
-> v2 7-Phase Pipeline + BLOCKING 14 + 종목별 묶음 분석 + 매매 룰.
+> v6 7-Phase Pipeline (per-stock 5단계 정합) + BLOCKING 11 + 종목별 묶음 분석 + 매매 룰.
 > SKILL.md 본문은 호출 정책만 명시, 상세 절차는 이 파일에 분리.
 
 ---
 
-## ⛔ BLOCKING — 시작 전 14개 체크
+## ⛔ BLOCKING — 시작 전 11개 체크 (v6 단순화 + WebSearch 자율 + base revision 큐)
 
-`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 14 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
+`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 11 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
 
 | # | Phase | 체크 항목 | 호출 |
 |---|---|---|---|
-| 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외). `get_portfolio()` 사용 금지 (Active 만) |
-| 2 | 0 | **base 만기 + 자동 갱신** ⭐ ⛔ 강제 | `check_base_freshness(auto_refresh=True)` — stale stock_base 자동 refresh + **economy/industry stale 발견 시 즉시 메인 inline 절차 실행** (`references/base-*-update-inline.md`). **자율 스킵 금지** ('효율 우선' / '시간 절약' / '1일 정도는 무시' 등 LLM 의 능동 회피 패턴 차단). 스킵 시 ⚠️ 반쪽 daily 즉시 격상 + 보고서 최상단 ⚠️ 명시 |
+| 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외) |
+| 2 | 0 | **base 만기 + 자동 갱신** ⭐ ⛔ 강제 | `check_base_freshness(auto_refresh=True)` — stale 발견 시 즉시 메인 inline 절차 실행 (`references/base-*-update-inline.md`). 자율 스킵 금지 |
 | 3 | 1 | 어제 pending 액션 로드 | `get_portfolio_summary(yesterday)` |
 | 4 | 1 | 어제 trades 매칭 | `reconcile_actions(yesterday)` |
-| 5 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` — 오늘 이미 체결된 매매 인지 필수 |
-| 6 | 1 | **오늘 trades 매칭** ⭐ | `reconcile_actions(today)` — Phase 1 에서 호출 (종료 루틴이 아님) |
-| 7 | 1 | 주간 회고 컨텍스트 | `get_weekly_context(weeks=4)` (→ `weekly-context-rules.md`) |
-| 8 | 2 | 시장 국면 판정 | `detect_market_regime()` |
-| 9 | 2 | 당일 매크로 / 뉴스 | `WebSearch("YYYY-MM-DD 한국/미국 주식 주요 이슈")` 최소 1회 |
-| 10 | 2 | `economy/{오늘}.md` | 없으면 즉시 자동 생성 (`economy-daily-template.md`) |
-| 11 | 3 | **종목별 per-stock-analysis 7단계** ⭐ | `references/per-stock-analysis.md` 절차를 #1 결과의 `all_codes` 전부 1회 따라감 (analyze_position raw + base 조회 + WebSearch + LLM 판단 + 저장) |
-| 12 | 3 | **(per-stock-analysis 의 5단계 WebSearch 안에 포함됨)** | 별도 호출 X. 절차 위반 (per-stock 5단계 누락) 시 ⚠️ 반쪽 daily |
-| 13 | 1 | **월요일 weekly_strategy 점검** (v8) | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. 사용자 명시 `/stock-weekly-strategy` 호출 안내 (자동 트리거 X). carry_over=True 면 보고서 최상단에 표기 |
-| 14 | 1 | **base 미처리 narrative revision 큐 점검** (라운드 2026-05) | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 daily 보고서 **최상단 ⚠️ 알림 강제** ("미처리 base narrative revision N건 누적, `/base-stock {code}` 또는 `/base-industry` 처리 권장"). 회고 Phase 3 에서 적재된 사용자 큐 (contradictory + base_refresh_required 케이스) 가 daily 까지 누적되지 않도록 강제 |
+| 5 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` |
+| 6 | 1 | **오늘 trades 매칭** ⭐ | `reconcile_actions(today)` |
+| 7 | 1 | 주간 회고 컨텍스트 | `get_weekly_context(weeks=4)` |
+| 8 | 2 | 시장 국면 판정 + 매크로 정형 | `detect_market_regime()` + (선택) `get_macro_indicators_us` / `get_macro_indicators_kr` / `get_economic_calendar` |
+| 9 | 3 | **종목별 per-stock-analysis 5단계** ⭐ | `references/per-stock-analysis.md` 절차를 #1 결과의 `all_codes` 전부 1회 따라감 — `analyze_position(code, include_base=True)` 1 MCP 로 base + 12 카테고리 통합 |
+| 10 | 1 | **월요일 weekly_strategy 점검** (v8) | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. carry_over=True 면 보고서 최상단에 표기 |
+| 11 | 1 | **base 미처리 narrative revision 큐 점검** (라운드 2026-05) | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 daily 보고서 **최상단 ⚠️ 알림 강제** ("미처리 base narrative revision N건 누적, `/base-stock {code}` 또는 `/base-industry` 처리 권장"). 회고 Phase 3 에서 적재된 사용자 큐 (contradictory + base_refresh_required 케이스) 가 daily 까지 누적되지 않도록 강제 |
 
-**⭐ #1**: `list_daily_positions()` — Active + Pending 일괄 반환. Pending 도 daily 생성.
-**⭐ #2** (강제): `auto_refresh=True` 로 KR stock_base 자동 갱신. economy/industry 는 메인 inline 처리 — `references/base-*-update-inline.md` (옛 sub-agent 폐기, 2026-04-30).
+**⭐ WebSearch 정책 (v7, 2026-05)**: BLOCKING 폐지. 매크로 / per-stock 모두 LLM 자율 호출 (`websearch-rules.md` 권장 가이드). 강제 횟수·캐시 룰 X.
 
-> ⛔ **stale 발견 시 강제 진입**. 옛 sub-agent 시절엔 메인이 spawn 호출만 하면 sync wait 로 자동 처리됐지만, inline 화 후엔 메인이 능동 진입 필수. **"효율 우선"·"1일 정도 무시" 스킵 금지** — 매일 강제 갱신이 sub-agent 폐기 결정의 전제 조건임. 스킵하려면 사용자 명시 승인 필요.
-**⭐ #5/#6**: 오늘 trades 인지 누락 시 typical bug — executed 매매를 pending 으로 잘못 기재.
-**⭐ #11**: 종목 1건당 `references/per-stock-analysis.md` 의 7단계 절차를 그대로 따른다. 그 안에서 base 조회 + `analyze_position` (raw 9 카테고리) + WebSearch + LLM 판단 + 저장이 통합 처리됨. 별도 carving 금지.
+**⭐ #1**: Pending 도 daily 생성.
+**⭐ #2**: economy/industry 는 메인 inline 처리. v6 (정형 MCP 우선) 절차서 적용.
+**⭐ #5/#6**: executed 매매를 pending 으로 잘못 기재 방지.
+**⭐ #9**: per-stock-analysis 5단계 (v6 단순화 — base 조회 + WebSearch 의무 단계 폐기). `analyze_position` 1 MCP 로 통합.
 
 긴급 시엔 `/stock-daily --fast` 명시로만 일부 스킵 허용.
 
@@ -42,42 +39,43 @@
 
 ---
 
-## 7-Phase Pipeline (v2)
+## 7-Phase Pipeline (v6 단순화 — per-stock 5단계 정합)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Phase 0: 신선도 cascade (deterministic)                      │
-│   check_base_freshness() → is_stale per-dim + auto_triggers │
-│   stale 시 즉시 메인 inline (references/base-*-update-inline.md) │
+│ Phase 0: stale 조회 + 갱신 (per-stock 1·2단계 정합)           │
+│   check_base_freshness(auto_refresh=True)                   │
+│   stale 시 메인 inline (정형 MCP 우선 + WebSearch 자율)     │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 1: 과거 학습 회수 (어제·오늘 거래 + 주간 회고)          │
-│   ├─ get_portfolio_summary(yesterday)                       │
-│   ├─ reconcile_actions(yesterday)                           │
-│   ├─ list_trades(limit=20)                                  │
-│   ├─ reconcile_actions(today)                               │
-│   └─ get_weekly_context(weeks=4)                            │
+│   get_portfolio_summary(yesterday) + reconcile_actions      │
+│   list_trades + reconcile_actions(today)                    │
+│   get_weekly_context(weeks=4)                               │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 2: 시장·매크로 컨텍스트                                 │
-│   detect_market_regime() + economy/{오늘}.md                │
+│   detect_market_regime()                                    │
+│   (선택) get_macro_indicators_us/kr + get_economic_calendar │
+│   (자율) WebSearch — 정형 미커버 nuance 시                  │
+│   economy/{오늘}.md 자동 생성                               │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 3: 종목별 per-stock-analysis 순회 (Active + Pending)   │
 │   for code in all_codes:                                    │
-│     references/per-stock-analysis.md 7단계 절차 그대로 적용 │
-│       (base 조회 + analyze_position raw + WebSearch +       │
-│        LLM 판단 + save_daily_report)                        │
+│     references/per-stock-analysis.md 5단계 절차              │
+│       1. stale 조회                                          │
+│       2. stale 갱신 (cascade, 발견 시만)                     │
+│       3. analyze_position(code, include_base=True) — 1 MCP  │
+│       4. LLM 종합 판단 (필요시 자율 WebSearch)              │
+│       5. save_daily_report                                   │
 │     coverage_pct < 80% → ⚠️ 반쪽 분석 표기                  │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 4: LLM 본문 판단 (Cell + Verdict, 자동 derive 없음)     │
-│   cell = LLM 이 변동성 regime + 재무 본문 grade 로 판단     │
-│   verdict = signals.summary.종합 (1차) + LLM override 가능  │
+│   per-stock 4단계에서 종목별 진행. 포트 단위 종합은 Phase 5.│
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 5: 액션 결정 (LLM 본문 판단 + master-principles)        │
 │   → references/master-principles.md 의 10 카테고리 인용     │
-│     (구체 수치 X, 케이스별 산업 평균 대비 본문 판단)        │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 6: 게이트 (deterministic)                               │
 │   check_concentration / 예수금 / 실적 D-7 / 수급 z 검증     │
-│   실패 시 자동 매매 차단                                     │
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 7: 출력·저장                                            │
 │   save_daily_report × N + save_portfolio_summary           │
@@ -121,15 +119,15 @@
 
 ---
 
-## 종목별 — `references/per-stock-analysis.md` 7단계 절차 적용
+## 종목별 — `references/per-stock-analysis.md` 5단계 절차 적용 (v6 단순화)
 
 종목 1건 분석 단일 진입점. 본문은 옮기지 않음 — 절차서 직접 인용.
 
-요약:
-1. base 신선도 체크 → 2. stale 갱신 (cascade) → 3. base 조회 (3층) → 4. `analyze_position(code)` raw 9 카테고리 → 5. WebSearch → 6. LLM 판단 → 7. `save_daily_report`
+요약 (v6, 2026-05):
+1. stale 조회 (`check_base_freshness`) → 2. stale 갱신 (cascade economy → industry → stock, 발견 시만) → 3. `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 통합) → 4. LLM 종합 판단 (필요시 자율 WebSearch) → 5. `save_daily_report`
 
-`analyze_position` 응답 카테고리 (raw 9):
-context / realtime / indicators / signals / financials raw (score 제거) / flow / volatility / events / consensus.
+`analyze_position` 응답 카테고리 (v4 보강 후 12종):
+**base** (3층 본문 inject) / context / realtime / indicators / signals / financials (raw, score 제거) / flow / volatility / events / consensus / **disclosures** (KR=DART 14일 / US=EDGAR 14일) / **insider_trades** (KR=major shareholders + exec / US=Finnhub 90일).
 **제거됨**: scoring / cell / is_stale (LLM 본문 판단 위임) / financials.score.
 
 ### 포트 단위 — 별도 호출 (per-stock-analysis 외부)
@@ -246,12 +244,8 @@ references:
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 룰 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
-- `websearch-rules.md` — WebSearch 의무 + 5종 추가 조건
+- `websearch-rules.md` — WebSearch 단위별 LLM 자율 가이드 (v7 — BLOCKING 폐지)
 - `weekly-context-rules.md` — 4가지 활용 룰
-- `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
-
-assets:
-- `daily-report-template.md`, `portfolio-summary-template.md`, `position-template.md`, `dependency-audit-template.md`, `economy-daily-template.md`
 - `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
 
 assets:
@@ -260,8 +254,3 @@ assets:
 - `position-template.md` — 보유 종목 position.md
 - `dependency-audit-template.md` — Audit 출력 + ⚠️ 반쪽 daily
 - `economy-daily-template.md` — economy/{날짜}.md 자동 생성
-
-scripts:
-- `detect_market.py` — KR/US 자동 판정
-- `concentration_check.py` — 집행 전 집중도 체크 fallback
-- `load_deps.py` — 직접 호출 모드 임포트 시퀀스 fallback

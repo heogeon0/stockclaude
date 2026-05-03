@@ -6,9 +6,9 @@
 - 종목코드: XXXXXX
 - 시장: KOSPI/KOSDAQ
 - 섹터: {섹터}
-- **변동성 등급**: {normal/high/extreme} (`analyze_volatility(code).regime` 기반)
-- **재무 등급**: {A/B/C/D} (`compute_score(code).breakdown.financial` 0-100 → A 80+ / B 60+ / C 40+ / D <40)
-- **셀**: {variability × finance} → 진입 사이즈 / 피라미딩 / 손절폭 (`stock/references/scoring-weights.md` 매트릭스 참고)
+- **변동성 regime**: {normal/high/extreme} (`analyze_volatility(code).regime`)
+- **재무 grade**: {A/B/C/D} — 산업 평균 대비 본문 판단 (`industries.avg_per/avg_pbr/avg_roe/avg_op_margin`)
+- **액션 결정**: 변동성 regime + 재무 grade 종합 LLM 본문 판단 (`stock/references/master-principles.md` 10 카테고리. v6 매트릭스 폐기 — `_archive/scoring-weights.md`)
 - 상태: **Active** / **Pending** / **Close** (3종 택1)
 
 ## 💰 현 포지션 (갱신일 YYYY-MM-DD)
@@ -39,7 +39,7 @@
 
 ### 🔼 추가 피라미딩 조건 (있을 때)
 - X단계 ₩XXX,XXX 돌파 + 거래량 X배+ 시 → +X주 (₩XX)
-- 단계 수는 **변동성×재무 매트릭스 셀**의 피라미딩 단계와 일치
+- 단계 수는 **LLM 본문 판단** (변동성 regime + 재무 grade + 산업 RS 종합, master-principles 의 손익 관리 카테고리)
 
 ## 📜 매매 이력
 
@@ -54,9 +54,9 @@
 2. **{핵심 근거 2}** — 세부
 3. **{핵심 근거 3}** — 세부
 
-## ⚖️ 액션 규칙 (변동성×재무 매트릭스 기반)
+## ⚖️ 액션 규칙 (LLM 본문 판단, v6)
 
-- 손절폭: **X%** (`stock/references/scoring-weights.md` 셀 기준)
+- 손절폭: **X%** — 변동성 regime + 재무 grade + ATR 종합 본문 판단 (`master-principles.md` 손익 관리 / 변동성 관리 카테고리)
 - 피라미딩: **X단계** ({현 상태})
 - 홀딩 기준: {일목 전환선/기준선 이탈 등}
 - 트레일링: {SMA20 or 기준선}

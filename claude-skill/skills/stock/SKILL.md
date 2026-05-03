@@ -1,6 +1,6 @@
 ---
 name: stock
-description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(inline) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. 매트릭스(변동성×재무 12셀)로 액션 차등화. stockclaude MCP 서버(58 툴) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
+description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US). 일일 운영(daily) / 신규 발굴(discover) / 6차원 정량 분석(research) / base 자동 갱신(inline) 모든 모드 통합. 매매 추천·피라미딩·손절·집중도·실적임박·컨센·재무·모멘텀·52주돌파·수급 분석. 사용자가 주식·매매·종목·포트·투자·분석·발굴·매도·매수·익절·손절·차트·시그널·재무·실적·컨센·DCF 같은 단어를 언급하면 반드시 이 skill 사용. v6 매트릭스 폐기 후 거장 원칙(master-principles 10 카테고리) + 산업 평균 대비 본문 판단. stockclaude MCP 서버(89 툴 인벤토리, v1 +9 라운드 2026-05) + PostgreSQL 백엔드 + 4개 KR/US 슬래시 명령(stock-daily/discover/research/base-*).
 ---
 
 # Stock — 통합 주식 운영 skill
@@ -8,7 +8,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 > **단일 진입점**으로 모든 주식 운영 처리.
 > 모드별 워크플로우는 `references/{daily,discover,research}-workflow.md` 분리.
 > base 본문 작성은 `references/base-*-update-inline.md` 절차로 메인이 inline 처리 (mobile/Desktop/iOS 호환).
-> 데이터·계산은 `stockclaude` MCP (48 툴) + PostgreSQL.
+> 데이터·계산은 `stockclaude` MCP (89 툴 인벤토리) + PostgreSQL.
 
 ---
 
@@ -47,7 +47,7 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ## 프로젝트 핵심 사실
 
-- **데이터·계산은 MCP**: `stockclaude` MCP 서버가 **48 툴** 제공 (`~/Desktop/Project/stockclaude/`)
+- **데이터·계산은 MCP**: `stockclaude` MCP 서버가 **89 툴 인벤토리** 제공 (`~/Desktop/Project/stockclaude/`)
 - **PostgreSQL 백엔드**: 포지션·거래·지표·시그널·애널·스코어링 가중치 모두 DB
 - **MCP 단일 의존**: 모든 데이터는 MCP 호출로 조회. **markdown 파일 직접 Read 금지** (DB source of truth)
 - **너의 역할 = 해석·판단·서술**. 숫자는 MCP, 의미 부여는 references 룰
@@ -55,21 +55,19 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
-## ⛔ 종목 1건 분석 단일 진입점
+## ⛔ 종목 1건 분석 단일 진입점 (5단계, v6 단순화)
 
-> 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 7단계 절차를 무조건 따른다**.
+> 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 5단계 절차를 무조건 따른다**.
 >
-> 자율 우회 금지 — '효율 우선' / '시간 절약' / '간단히 처리' 같은 LLM 능동 회피 패턴 차단.
-> 매 종목마다 이 절차로 진입. 7단계 다 돌려야 1건 완료.
+> v6 (2026-05) 단순화: 7단계 → 5단계. base 조회 + WebSearch 의무 단계 폐기. `analyze_position` 이 base 본문 inject + disclosures + insider 통합.
+> WebSearch 는 LLM 자율 — `websearch-rules.md` 가이드 참조.
 
 절차 요약 (상세는 `references/per-stock-analysis.md`):
-1. base 신선도 체크 (`check_base_freshness`)
-2. stale 갱신 (cascade economy → industry → stock, 각 inline 절차)
-3. base 조회 (`get_economy_base` + `get_industry` + `get_stock_context`)
-4. `analyze_position` (raw 데이터, scoring/cell/is_stale 없음)
-5. WebSearch (당일 뉴스, LLM 판단 **전** 의무)
-6. LLM 종합 판단 (판단 룰 인덱스 인용)
-7. 출력 + 저장 (`save_daily_report`, verdict 5종)
+1. **stale 조회** (`check_base_freshness`)
+2. **stale 갱신** (cascade economy → industry → stock, 발견 시만)
+3. **종목 분석** — `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 — base 본문 3층 + disclosures + insider + 정량 raw)
+4. **LLM 종합 판단** (필요시 자율 WebSearch)
+5. **출력 + 저장** (`save_daily_report`, verdict 5종)
 
 모드별 호출 위치:
 
@@ -265,9 +263,9 @@ inline 절차 완료 후 메인이 즉시:
 **일일 운영** — 보유(Active) + 감시(Pending) 종목 일일 보고서 + 포트폴리오 종합.
 
 핵심:
-- ⛔ BLOCKING 12개 — Phase 0~1 진입 전 필수
-- v2 7-Phase Pipeline (Phase 0~7)
-- `analyze_position(code)` 1회로 16 카테고리 중 10개 묶음 반환
+- ⛔ BLOCKING 11개 — Phase 0~1 진입 전 필수 (v6 단순화 + WebSearch 자율, 라운드 2026-05)
+- v6 7-Phase Pipeline (Phase 0~7, per-stock 5단계 정합)
+- `analyze_position(code, include_base=True)` 1 MCP 로 12 카테고리 묶음 반환 (base 본문 3층 + disclosures + insider + 정량 raw)
 - KR/US 하이브리드 통화별 분리
 
 ### discover 모드 → `references/discover-workflow.md`
@@ -290,14 +288,15 @@ inline 절차 완료 후 메인이 즉시:
 
 ---
 
-## MCP 56 툴 인벤토리
+## MCP 89 툴 인벤토리 (v1 라운드 2026-05 — 전수 재계산)
 
 ### 📊 조회 (7)
 `get_portfolio`, `get_portfolio_summary`, `get_stock_context`, `get_applied_weights`, `list_trades`, `list_tradable_stocks`, `list_daily_positions`
 
-### 📈 기술 분석 (7)
+### 📈 기술·시그널 (8)
 `compute_indicators`, `compute_signals`, `refresh_daily`,
-`detect_market_regime`, `analyze_volatility`, `rank_momentum`, `rank_momentum_wide`
+`detect_market_regime`, `analyze_volatility`, `rank_momentum`, `rank_momentum_wide`,
+`backtest_signals` (단일 종목 12 시그널 5/10/20일 hold 승률 측정)
 
 ### 💰 재무·애널 (8)
 `compute_financials`, `detect_earnings_surprise_tool`,
@@ -311,33 +310,57 @@ inline 절차 완료 후 메인이 즉시:
 ### 🎯 진입 설계 (3)
 `propose_position_params`, `propose_watch_levels`, `compute_score`
 
-### 🔍 KIS 실시간 (4)
+### 🔍 실시간 시세 (4)
 `kis_current_price`, `kis_us_quote`, `kis_intraday`, `realtime_price`
 
-### 📝 쓰기 (11)
+### 📦 종목 분석 단일 진입점 (1)
+`analyze_position` — 12 카테고리 묶음 (base 본문 3층 + disclosures + insider + context + realtime + indicators + signals + financials + flow + volatility + events + consensus). per-stock-analysis 5단계의 3단계 = 1 MCP 정신.
+
+### 📝 쓰기 (10)
 `record_trade` (cash_balance 자동 갱신 — issue #7 trigger), `register_stock` (신규 종목 등록 — industry_code 매핑 의무),
 `save_daily_report`, `save_portfolio_summary`,
 `save_stock_base`, `save_industry`, `save_economy_base`,
-`override_score_weights`, `reset_score_weights`,
-`refresh_stock_base`, `analyze_position` (16카테고리 묶음)
-
-### 📊 회고·스냅샷 (5)
-`save_weekly_review`, `get_weekly_review`, `list_weekly_reviews`, `get_weekly_context`, `reconcile_actions`
+`override_score_weights`, `reset_score_weights`, `refresh_stock_base`
 
 ### 🌐 발굴 (2)
 `screen_stocks`, `discover_by_theme`
 
-### 🔧 base 조회 (3)
-`get_economy_base`, `get_industry`, `check_base_freshness`
+### 🔧 base 운영 (6)
+`get_economy_base`, `get_industry`, `check_base_freshness`,
+`append_base_facts` (Daily Appended Facts append),
+`propose_base_narrative_revision` (회고 phase 3 narrative 충돌 시 큐 적재),
+`get_pending_base_revisions` (BLOCKING #11 daily 진입 시 알림용)
+
+### 📊 산업 메트릭 (1) ⭐ v1 신규 (2026-05)
+`compute_industry_metrics` — leader_followers 기반 avg_per/avg_pbr/avg_roe/avg_op_margin/vol_baseline_30d 자동 산출. industry-inline v6 메트릭 자동화.
+
+### 🌍 정형 매크로 (5) ⭐ v1 신규 (2026-05)
+`get_macro_indicators_us` (FRED 시계열 — DFF/CPI/UNRATE/DGS10/SP500 등),
+`get_macro_indicators_kr` (한국은행 ECOS — 기준금리/CPI/M2/경상수지/실업률/외환보유고/산업생산 8 default stat_code),
+`get_yield_curve` (UST 3M~30Y + 10Y_3M_spread + 역전여부),
+`get_fx_rate` (FRED DEXKOUS 기본, 1일 TTL),
+`get_economic_calendar` (Finnhub 경제 캘린더 + 컨센서스)
+
+### 📰 공시 + insider (5) ⭐ v1 신규 (2026-05)
+`get_kr_disclosures` (DART 14일), `get_us_disclosures` (EDGAR 14일),
+`get_kr_insider_trades` (DART 임원·주요주주 거래), `get_kr_major_shareholders` (DART 대주주 현황),
+`get_us_insider_trades` (Finnhub 90일, 본문 파싱 OK)
+
+### 📅 주간 회고·전략 (14)
+- 종합 회고 (5): `save_weekly_review`, `get_weekly_review`, `list_weekly_reviews`, `get_weekly_context`, `reconcile_actions`
+- 종목별 회고 (6, 라운드 2026-05): `save_weekly_review_per_stock`, `get_weekly_review_per_stock`, `list_weekly_review_per_stock`, `list_weekly_review_per_stock_by_code`, `prepare_weekly_review_per_stock`, `prepare_weekly_review_portfolio`
+- 주간 전략 (3): `save_weekly_strategy`, `get_weekly_strategy`, `list_weekly_strategies`
+
+### 🧠 학습 패턴 (3)
+`append_learned_pattern`, `get_learned_patterns`, `promote_learned_pattern`
+
+### 📚 룰 카탈로그 (6, 라운드 2026-05 — DB single source-of-truth)
+`list_trades_by_rule` (주간 회고 helper. trades 를 rule_id 별 그룹 반환),
+`list_rule_catalog`, `register_rule`, `update_rule`, `deprecate_rule`, `get_rule`
+→ `references/rule-catalog.md` 참고 (DB rule_catalog 테이블이 정의처).
 
 ### 🩺 운영 (1)
-`healthcheck` — 58 도구 + 8 스크래퍼 + DB 정합 + 신선도 일괄 점검 (quick=True 기본 ~30s)
-
-### 📉 백테스트 (1)
-`backtest_signals` — 단일 종목 12 시그널 5/10/20일 hold 승률 측정. discover 모드 2.5단계 자동 호출 (Phase 1: 정보 첨부, 자동 가중치 X)
-
-### 📚 룰 카탈로그 (1)
-`list_trades_by_rule` — 주간 회고 helper. 특정 주 trades 를 rule_category 별 그룹 반환 (`save_weekly_review` 작성 시 win/loss 분류). 14 룰 정의: → `references/rule-catalog.md`
+`healthcheck` — 전체 도구 + 8 스크래퍼 + DB 정합 + 신선도 일괄 점검 (quick=True 기본 ~30s)
 
 ---
 
@@ -369,7 +392,7 @@ inline 절차 완료 후 메인이 즉시:
 ### 프로젝트 경로
 
 ```
-~/Desktop/Project/stockclaude/          ← MCP 서버 (FastAPI + PG + 48 tools)
+~/Desktop/Project/stockclaude/          ← MCP 서버 (FastAPI + PG + 67 tools 인벤토리)
   .mcp.json                                ← Claude Code 자동 등록
   server/
     api/, scrapers/, analysis/, repos/, jobs/, mcp/
@@ -377,8 +400,8 @@ inline 절차 완료 후 메인이 즉시:
 
 ~/.claude/skills/stock/                    ← 본 skill (단일 통합)
   ├── SKILL.md (이 파일)
-  ├── references/  (32개 파일 — base-*-update-inline 3개 포함)
-  └── assets/      (12 templates)
+  ├── references/  (36개 파일 — base-*-update-inline 3개 + weekly-* 3개 + rule-catalog 등 포함, _archive/ 별도)
+  └── assets/      (15 templates — weekly-review 3개 포함)
   (agents/ 폐지 — 2026-04-30, base-*-update-inline.md 로 통합)
   (scripts/ 폐지 — 모든 분석·계산은 MCP 단일 의존)
 
@@ -410,7 +433,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 
 ## 보조 파일 인덱스
 
-### references/ (29개)
+### references/ (36개, _archive/ 별도 3개)
 
 **공통 룰** (모든 모드 적용):
 - `master-principles.md` — 거장 트레이딩 원칙 10 카테고리 ⭐ (v6 신설, 옛 매트릭스 대체)
@@ -420,7 +443,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `market-routing.md` — KR/US 데이터 소스 분기
 
 **모드별 워크플로우**:
-- `daily-workflow.md` — daily 모드 (BLOCKING 12 + Phase 0~7)
+- `daily-workflow.md` — daily 모드 (BLOCKING 11 + Phase 0~7, v6 단순화)
 - `discover-workflow.md` — discover 모드 (광역 모멘텀 → Top 3~5)
 - `research-workflow.md` — research 모드 (6차원 verdict)
 
@@ -429,7 +452,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
-- `websearch-rules.md` — WebSearch 의무 + 5종 추가 조건
+- `websearch-rules.md` — WebSearch 단위별 LLM 자율 가이드 (v7 — BLOCKING 폐지, 종목/economy/industry/stock 단위별 권장 강도 표)
 - `weekly-context-rules.md` — 4가지 활용 룰
 - `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
 
@@ -464,7 +487,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 
 ### scripts/ — 폐지 (MCP 단일 의존)
 
-기존 9개 script (detect_market / concentration_check / fetch_consensus / valuation_call 등) 모두 MCP 도구로 대체됨. 시장 판정·집중도·컨센 fetch·DCF 호출은 LLM 이 MCP 직접 호출 (위 48 툴 인벤토리 참조). multi-step orchestration (discover Pending 등록 등) 도 LLM 이 MCP 시퀀스로 직접 처리.
+기존 9개 script (detect_market / concentration_check / fetch_consensus / valuation_call 등) 모두 MCP 도구로 대체됨. 시장 판정·집중도·컨센 fetch·DCF 호출은 LLM 이 MCP 직접 호출 (위 89 툴 인벤토리 참조). multi-step orchestration (discover Pending 등록 등) 도 LLM 이 MCP 시퀀스로 직접 처리.
 
 ### assets/ (12 templates)
 

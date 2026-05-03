@@ -2556,7 +2556,7 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
 
 
 @mcp.tool
-def analyze_position(code: str) -> dict:
+def analyze_position(code: str, include_base: bool = True) -> dict:
     """
     종목별 raw 데이터 분석 일괄 묶음 — LLM이 부분 스킵 못하도록 1회 호출에 강제 포함.
 
@@ -2602,7 +2602,9 @@ def analyze_position(code: str) -> dict:
 
     bundle: dict = {"code": code, "name": name, "market": market, "errors": {}}
     success = 0
-    total = 9
+    # v4 (2026-05): 9 → 12 카테고리 (base + disclosures + insider_trades).
+    # include_base=False 시 base 카테고리 제외 (분모 11).
+    total = 12 if include_base else 11
 
     def _ohlcv() -> pd.DataFrame:
         if market == "kr":
@@ -2611,9 +2613,25 @@ def analyze_position(code: str) -> dict:
 
     # 1) context
     try:
+        # v4 fix (2026-05): stock_base content 는 카테고리 #12 (base) 에서만 풀 inject.
+        # context.base 는 메타만 (stale 여부 / 등급 / 짧은 narrative) — 5,283자 중복 직렬화 제거.
+        sb_row = _row_safe(stock_base.get_base(code))
+        sb_meta = None
+        if sb_row:
+            sb_meta = {
+                k: sb_row.get(k) for k in (
+                    "code", "updated_at", "expires_at",
+                    "grade", "total_score", "financial_score",
+                    "industry_score", "economy_score",
+                    "narrative", "risks", "scenarios",
+                    "fair_value_avg", "analyst_target_avg", "analyst_target_max",
+                    "analyst_consensus_count",
+                    "per", "pbr", "roe", "op_margin",
+                ) if k in sb_row
+            }
         bundle["context"] = {
             "stock": _row_safe(s_row),
-            "base": _row_safe(stock_base.get_base(code)),
+            "base": sb_meta,  # content 제거 — 풀 본문은 bundle["base"]["stock"] 에서 인용
             "latest_daily": _row_safe(stock_daily.get_latest(uid, code)),
             "position": _row_safe(positions.get_position(uid, code)),
             "watch_levels": [_row_safe(lv) for lv in watch_levels.list_by_code(uid, code)],
@@ -2814,7 +2832,69 @@ def analyze_position(code: str) -> dict:
     except Exception as e:
         bundle["errors"]["consensus"] = str(e)
 
-    # 10) Coverage 임계값 경고 (<80% 시 ⚠️)
+    # 10) disclosures (v4 신규) — KR=DART / US=EDGAR 14일
+    try:
+        if market == "us":
+            from server.scrapers import edgar
+            disc_df = edgar.fetch_disclosures(code, days=14)
+        else:
+            disc_df = dart.fetch_disclosures(code, days=14)
+        bundle["disclosures"] = (
+            disc_df.to_dict(orient="records")
+            if disc_df is not None and not disc_df.empty else []
+        )
+        success += 1
+    except Exception as e:
+        bundle["errors"]["disclosures"] = str(e)
+        bundle["disclosures"] = []
+
+    # 11) insider_trades (v4 신규) — KR=DART major_shareholders_exec / US=Finnhub 90일
+    try:
+        if market == "us":
+            from server.scrapers import finnhub as fh
+            ins_df = fh.fetch_insider_trading(code, days=90)
+        else:
+            # KR: 90일 필터링은 raw 응답에 적용 (rcept_dt 기반)
+            ins_df = dart.fetch_major_shareholders_exec(code)
+            if ins_df is not None and not ins_df.empty and "rcept_dt" in ins_df.columns:
+                cutoff = (pd.Timestamp.now() - pd.Timedelta(days=90)).strftime("%Y%m%d")
+                ins_df = ins_df[ins_df["rcept_dt"] >= cutoff].copy()
+        rows = (
+            ins_df.to_dict(orient="records")
+            if ins_df is not None and not ins_df.empty else []
+        )
+        # 90일 누적 매수/매도 합계 (US 만 가능 — KR raw 는 별도 매핑 필요)
+        net_summary: dict = {"buy_count": 0, "sell_count": 0}
+        if market == "us" and rows:
+            for r in rows:
+                t = str(r.get("유형") or "").strip()
+                if t == "매수":
+                    net_summary["buy_count"] += 1
+                elif t == "매도":
+                    net_summary["sell_count"] += 1
+        bundle["insider_trades"] = {"rows": rows, "summary_90d": net_summary, "count": len(rows)}
+        success += 1
+    except Exception as e:
+        bundle["errors"]["insider_trades"] = str(e)
+        bundle["insider_trades"] = {"rows": [], "summary_90d": {}, "count": 0}
+
+    # 12) base 본문 3층 inject (v4 신규, include_base=True 시) — economy/industry/stock
+    if include_base:
+        try:
+            from server.repos import economy as economy_repo, industries as ind_repo
+            ind_code = (s_row or {}).get("industry_code")
+            base_payload = {
+                "economy": _row_safe(economy_repo.get_base(market)),
+                "industry": _row_safe(ind_repo.get_industry(ind_code)) if ind_code else None,
+                "stock": _row_safe(stock_base.get_base(code)),
+            }
+            bundle["base"] = base_payload
+            success += 1
+        except Exception as e:
+            bundle["errors"]["base"] = str(e)
+            bundle["base"] = {}
+
+    # Coverage 임계값 경고 (<80% 시 ⚠️)
     bundle["categories_succeeded"] = success
     bundle["categories_total"] = total
     coverage = round(100 * success / total, 1) if total else 0.0
@@ -3980,6 +4060,172 @@ def healthcheck(quick: bool = True) -> dict:
     """
     from server.jobs.healthcheck import run_healthcheck
     return _json_safe(run_healthcheck(quick=quick))
+
+
+# =====================================================================
+# 정형 매크로 / 공시 / insider — economy/stock base inline 정형 우선 도구
+# =====================================================================
+
+@mcp.tool
+def get_macro_indicators_us(series_ids: list[str] | None = None) -> dict:
+    """FRED 미국 매크로 시계열 한 번에 조회 (economy-inline US 차원).
+
+    series_ids 미지정 시 default 10종: DFF/CPIAUCSL/VIXCLS/T10Y3M/GDP/UNRATE/DGS10/DGS2/DGS3MO/SP500.
+
+    반환: {series_id: {최신값, 날짜, YoY변화}} (raw pd.Series 는 응답에서 제외).
+    """
+    from server.scrapers import fred
+    raw = fred.fetch_macro_indicators(series_ids)
+    out: dict = {}
+    for sid, payload in raw.items():
+        if "error" in payload:
+            out[sid] = {"error": payload["error"]}
+            continue
+        out[sid] = {
+            "최신값": payload.get("최신값"),
+            "날짜": payload.get("날짜"),
+            "YoY변화": payload.get("YoY변화"),
+        }
+    return _json_safe(out)
+
+
+@mcp.tool
+def get_macro_indicators_kr(stat_codes: list[str] | None = None) -> dict:
+    """한국은행 ECOS — KR 매크로 시계열 한 번에 조회 (economy-inline KR 차원).
+
+    stat_codes 미지정 시 default 8종: 기준금리(722Y001) / CPI(901Y009) / 원달러환율(731Y004) /
+    M2(101Y004) / 경상수지(301Y013) / 산업생산(901Y033) / 실업률(901Y027) / 외환보유고(732Y001).
+
+    반환: {stat_code: {이름, 최신값, 단위, 날짜, YoY변화, cycle, 출처: "ECOS"}}.
+    """
+    from server.scrapers import ecos
+    return _json_safe(ecos.fetch_kr_macro_indicators(stat_codes))
+
+
+@mcp.tool
+def get_yield_curve() -> dict:
+    """UST 수익률 곡선 스냅샷 (3M/2Y/5Y/10Y/30Y + 10Y_3M_spread + 역전여부).
+
+    economy-inline US 차원의 yield curve 섹션 정형 데이터 소스.
+    """
+    from server.scrapers import fred
+    return _json_safe(fred.fetch_yield_curve())
+
+
+@mcp.tool
+def get_fx_rate(pair: str = "DEXKOUS", date: str | None = None) -> dict:
+    """FRED 환율 조회. 기본 DEXKOUS = KRW per USD.
+
+    1일 TTL 캐시. economy-inline 환율 차원 정형 소스.
+    """
+    from server.scrapers import fred
+    return _json_safe(fred.fetch_fx_rate(pair=pair, date=date))
+
+
+@mcp.tool
+def get_economic_calendar(
+    start: str | None = None,
+    end: str | None = None,
+    country: str = "US",
+) -> list[dict]:
+    """Finnhub 경제 캘린더 (이벤트 + 컨센서스 + 실제값).
+
+    start/end 미지정 시 오늘부터 14일치. country 기본 "US".
+    economy-inline 의 경제 이벤트 차원 + daily 매크로 권장 검색의 정형 대체.
+
+    반환 row 컬럼: 시각/국가/이벤트/중요도(1~3)/예측/실제/이전.
+    """
+    from server.scrapers import finnhub as fh
+    df = fh.fetch_economic_calendar(start=start, end=end, country=country)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
+
+
+@mcp.tool
+def compute_industry_metrics(industry_code: str) -> dict:
+    """산업 메트릭 자동 산출 (industry-base v6 메트릭 자동화).
+
+    industries.leader_followers.leaders 종목들에 compute_financials + 30일 RV 돌려서
+    avg_per / avg_pbr / avg_roe / avg_op_margin / vol_baseline_30d 평균 산출.
+    industry-inline 절차에서 LLM 이 수동 산출하던 작업의 정형 MCP 대체.
+
+    반환: {industry_code, name, market, leaders[], avg_per/pbr/roe/op_margin, vol_baseline_30d, computed_at, errors}.
+    """
+    from server.analysis.industry_metrics import compute_industry_metrics as _impl
+    return _json_safe(_impl(industry_code))
+
+
+@mcp.tool
+def get_kr_disclosures(code: str, days: int = 14) -> list[dict]:
+    """DART 최근 N일 공시 목록 (KR).
+
+    stock-base 딜레이더 #1(M&A)/#2(관계사)/#5(주주행동주의)/#6(대주주변동) 정형 1차 소스.
+    per-stock-analysis 4단계 disclosures 카테고리의 KR 분기.
+
+    반환 row 컬럼: 날짜/공시유형/제목/URL.
+    """
+    df = dart.fetch_disclosures(code, days=days)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
+
+
+@mcp.tool
+def get_us_disclosures(ticker: str, days: int = 14) -> list[dict]:
+    """SEC EDGAR 최근 N일 공시 목록 (US).
+
+    8-K (M&A·경영진 변동·가이던스) / 10-K·Q / Form 4 (insider) / 13D·G (대량보유) 등.
+    stock-base 딜레이더 정형 1차 소스. per-stock-analysis 4단계 disclosures US 분기.
+
+    반환 row 컬럼: 날짜/공시유형/제목/URL.
+    """
+    from server.scrapers import edgar
+    df = edgar.fetch_disclosures(ticker, days=days)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
+
+
+@mcp.tool
+def get_kr_insider_trades(code: str) -> list[dict]:
+    """DART 임원·주요주주 특정증권등 소유상황보고 (KR insider).
+
+    stock-base 딜레이더 #6(대주주변동) 정형 소스. per-stock-analysis insider_trades KR 분기.
+    raw 행 그대로 반환 — DART 응답 컬럼 보존.
+    """
+    df = dart.fetch_major_shareholders_exec(code)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
+
+
+@mcp.tool
+def get_kr_major_shareholders(code: str) -> list[dict]:
+    """DART 대주주 현황 (KR).
+
+    stock-base 딜레이더 #6 보조 소스. 임원 거래(get_kr_insider_trades)와 함께 사용.
+    """
+    df = dart.fetch_major_shareholders(code)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
+
+
+@mcp.tool
+def get_us_insider_trades(ticker: str, days: int = 90) -> list[dict]:
+    """Finnhub 내부자 매매 (US insider, 본문 파싱 OK).
+
+    stock-base 딜레이더 #5(주주행동주의)/#6(대주주변동) 정형 소스. EDGAR Form 4 stub 보다 본문 파싱 완료.
+    per-stock-analysis insider_trades US 분기.
+
+    반환 row 컬럼: 날짜/인물/유형(매수·매도·기타)/주식수/가격/총액/사유.
+    """
+    from server.scrapers import finnhub as fh
+    df = fh.fetch_insider_trading(ticker, days=days)
+    if df is None or df.empty:
+        return []
+    return _json_safe(df.to_dict(orient="records"))
 
 
 # =====================================================================

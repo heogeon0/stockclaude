@@ -5,15 +5,18 @@
 ```markdown
 ### ✅ Dependency Audit (YYYY-MM-DD)
 
-[BLOCKING 8가지]
+[BLOCKING 핵심 6가지 요약 — v6 단순화, WebSearch 자율 (전체 BLOCKING 11 은 daily-workflow.md 참조)]
 - [x] get_portfolio_summary(yesterday) — 매칭 N건
-- [x] reconcile_actions(yesterday)
+- [x] reconcile_actions(yesterday) + reconcile_actions(today)
 - [x] detect_market_regime — {bull/bear/sideways}
-- [x] WebSearch 당일 뉴스 — {N개 이슈 확인}
 - [x] economy/{오늘}.md — 생성/로드
-- [x] get_stock_context — {N종} 로드 완료
-- [x] WebSearch 종목별 N/N
+- [x] analyze_position (include_base=True) — {N종} coverage 평균 X.X%
 - [x] get_weekly_context(weeks=4) — 적용 룰 강화 {요약}
+
+[참고 메트릭 — WebSearch 자율 호출 패턴]
+- 매크로 자율 search: {0~N회 + 사유}
+- per-stock 자율 search: {0~N회 + 종목별}
+- 정형 미커버 영역(industry 차원·지정학 등)에서 호출 권장
 
 [자동 재생성]
 - stocks/*/base.md: {재생성 종목} / {재생성 없음}
@@ -21,27 +24,25 @@
 - economy/base.md: {재생성} / {유효}
 - backtest.md: {재갱신} / {유효}
 
-[종목별 16카테고리 분석 커버리지]
+[종목별 analyze_position 12 카테고리 분석 커버리지 (v4 보강)]
 | # | 카테고리 | 005930 | 036570 | NVDA | … |
 |---|---|:---:|:---:|:---:|---|
-| 1 | indicators | ✅ | ✅ | ⚠️ DB | … |
-| 2 | signals | ✅ | ✅ | ⚠️ DB | … |
-| 3 | financials | ✅ | ⚠️ 경고 | — | … |
-| 4 | momentum | ✅ | ✅ | ✅ | … |
-| 5 | regime | ✅ (포트 공통) |
-| 6 | concentration | ✅ (매수 시만) |
-| 7 | scoring | ✅ | ✅ | ✅ | … |
-| 8 | backtest | ✅ (weekly_context 대체) |
-| 9 | flow | ✅ | ✅ | — KR 전용 | … |
-| 10 | events | ✅ | ✅ | ⚠️ DB | … |
-| 11 | correlation | ✅ (포트 공통) |
-| 12 | volatility | ✅ | ✅ | ⚠️ DB | … |
-| 13 | sensitivity | ⚠️ 추정만 |
-| 14 | consensus | ✅ / ⚠️ DB | … | … | … |
-| 15 | valuation | ✅ (base.md) |
-| 16 | chart_analysis | ✅ (signals 내) |
+| 1 | base (3층 본문 inject) | ✅ | ✅ | ✅ | … |
+| 2 | context | ✅ | ✅ | ✅ | … |
+| 3 | realtime | ✅ | ✅ | ✅ | … |
+| 4 | indicators | ✅ | ✅ | ⚠️ DB | … |
+| 5 | signals | ✅ | ✅ | ⚠️ DB | … |
+| 6 | financials (raw) | ✅ | ⚠️ 경고 | — | … |
+| 7 | flow | ✅ | ✅ | — KR 전용 | … |
+| 8 | volatility | ✅ | ✅ | ⚠️ DB | … |
+| 9 | events | ✅ | ✅ | ⚠️ DB | … |
+| 10 | consensus | ✅ / ⚠️ DB | … | … | … |
+| 11 | disclosures (KR=DART/US=EDGAR 14일) | ✅ | ✅ | ✅ | … |
+| 12 | insider_trades (KR=major+exec / US=Finnhub 90일) | ✅ | ✅ | ✅ | … |
 
-→ **요약: N6/16 카테고리 ✅ / N ⚠️**
+> 포트 단위 (regime / concentration / correlation / weekly_context) 는 별도 — Phase Audit 표 참조.
+
+→ **요약: N/12 카테고리 ✅ / N ⚠️ (평균 coverage_pct X.X%)**
 
 [Base 영향도 판단 — daily content에 기록됨]
 - high/medium facts: {N건 — 종목 리스트}
@@ -62,7 +63,6 @@
 
 ```markdown
 > ⚠️ **반쪽 daily — 아래 항목 누락**
-> - WebSearch 당일 뉴스 미수행
 > - compute_financials 005930 실패
 > - 086790 coverage 70% (consensus DB empty + financials 경고 처리 못함)
 > - NVDA/GOOGL OHLCV DB 미적재로 indicators/signals/events 분석 불가
@@ -70,7 +70,7 @@
 > 이 보고서는 완전한 분석이 아니며, 내일 /stock-daily 재실행 권장
 ```
 
-## Phase Audit (v2 7-Phase Pipeline)
+## Phase Audit (v6 7-Phase Pipeline — per-stock 5단계 정합)
 
 매 daily 마무리 시 Phase별 호출 검증 표 자동 출력 — 누락 시 ⚠️ 강제.
 
@@ -80,10 +80,10 @@
 |---|---|---|---|
 | 0. 신선도 + 스코프 | `list_daily_positions`, `check_base_freshness(auto_refresh=True)` | 2 | ✅ |
 | 1. 과거 학습 회수 | `get_portfolio_summary(yest)`, `reconcile_actions(yest)`, **`list_trades`**, **`reconcile_actions(today)`**, `get_weekly_context` | 5 | ✅ |
-| 2. 매크로·국면 | `detect_market_regime`, `WebSearch` | 2 | ✅ |
-| 3. 종목 분석 | `analyze_position × N` (Active+Pending) + 종목별 WebSearch | N×2 | ✅ (avg coverage X.X%) |
+| 2. 매크로·국면 | `detect_market_regime` (+ 정형 매크로 / 자율 WebSearch) | 1~3 | ✅ |
+| 3. 종목 분석 | `analyze_position × N` (include_base=True, 1 MCP) + 자율 WebSearch | N (+자율) | ✅ (avg coverage X.X%) |
 | 4. 분류 (Cell+Verdict) | (Phase 3 derive) | — | ✅ |
-| 5. 액션 결정 | (decision-tree.md 적용) | — | ✅ |
+| 5. 액션 결정 | (master-principles.md 적용 — 옛 decision-tree _archive) | — | ✅ |
 | 6. 게이트 | `check_concentration` (집행 시) | 0~N | — / ✅ |
 | 7. 저장 | `save_daily_report × N`, `save_portfolio_summary` (옵션 `reconcile_actions(today)` 흡수) | N+1 | ✅ |
 

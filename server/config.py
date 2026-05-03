@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     fred_api_key: str | None = None
     finnhub_api_key: str | None = None
     sec_edgar_user_agent: str | None = None
+    # 한국은행 ECOS OpenAPI (KR 매크로 — 기준금리/CPI/환율/M2/경상수지 등)
+    # 발급: https://ecos.bok.or.kr/api/  무료, 즉시.
+    ecos_api_key: str | None = None
 
     # Optional (서버 AI — Phase 3에선 미사용)
     anthropic_api_key: str | None = None

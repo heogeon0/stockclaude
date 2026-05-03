@@ -53,7 +53,7 @@ base.md 만료된 종목:
 | ... | A+ 92 | Buy | A | 강한매수 | 풀 진입 |
 | ... | A 78 | Buy | B | 매수우세 | 70% 진입 |
 
-(권장 사이즈는 변동성×재무 매트릭스 기반 — `~/.claude/skills/stock/references/scoring-weights.md`)
+(권장 사이즈 — 변동성 regime + 산업 평균 대비 재무 grade 본문 판단. v6 매트릭스 폐기 후 `~/.claude/skills/stock/references/master-principles.md` 인용.)
 
 ## 청산 후보 (보유 중 청산 필터 발생)
 

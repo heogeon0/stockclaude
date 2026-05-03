@@ -68,4 +68,8 @@ detect_market_regime(reference_code='005930')  # KR
 ## 스타일 폐지 (v17)
 
 기존 stock-momentum 의 "단타 / 스윙 / 중장기" 분기는 **폐지**.
-새 룰: 변동성×재무 매트릭스 (`~/.claude/skills/stock/references/scoring-weights.md`) 로 단일 처리.
+
+## 액션 결정 (v6, 2026-05)
+
+옛 매트릭스 룩업 (`_archive/scoring-weights.md`) 도 v6 에서 anchor 효과 + 검증 안 된 직관적 설계로 폐기. 대체:
+→ `~/.claude/skills/stock/references/master-principles.md` 의 10 카테고리 거장 원칙 (Livermore / Minervini / O'Neil / Weinstein / Buffett / Marks / PTJ / Lynch). LLM 본문 판단으로 산업 평균 대비 / Top-down 정합성 / 변동성 regime 종합.

@@ -1,0 +1,399 @@
+{
+  "started_at": 1777810104.3213172,
+  "code": "005930",
+  "check_base_freshness_seconds": 33.969,
+  "check_base_freshness_summary": {
+    "total_stale": 6,
+    "total_missing": 0,
+    "auto_triggers": [
+      "/base-economy --us",
+      "/base-industry us-communication",
+      "/base-industry us-tech",
+      "/base-industry 게임",
+      "/base-industry 전력설비",
+      "/base-industry 지주"
+    ],
+    "needs_refresh": [
+      "economy/us",
+      "industries/us-communication",
+      "industries/us-tech",
+      "industries/게임",
+      "industries/전력설비",
+      "industries/지주"
+    ],
+    "all_fresh": false
+  },
+  "check_base_freshness_economy_count": 2,
+  "check_base_freshness_industries_count": 10,
+  "check_base_freshness_stocks_count": 13,
+  "analyze_position_with_base_seconds": 15.794,
+  "analyze_position_without_base_seconds": 12.859,
+  "with_base": {
+    "categories_succeeded": 12,
+    "categories_total": 12,
+    "coverage_pct": 100.0,
+    "errors": {},
+    "bytes_utf8": 61426,
+    "bytes_ascii": 89079,
+    "tokens_cl100k": 28510,
+    "tokens_o200k": 23292,
+    "category_keys": [
+      "code",
+      "name",
+      "market",
+      "context",
+      "realtime",
+      "indicators",
+      "signals",
+      "financials",
+      "flow",
+      "volatility",
+      "events",
+      "consensus",
+      "disclosures",
+      "insider_trades",
+      "base"
+    ],
+    "category_breakdown": [
+      {
+        "category": "base",
+        "bytes_utf8": 26588,
+        "bytes_ascii": 40425,
+        "tokens_cl100k": 12616,
+        "tokens_o200k": 10034,
+        "type": "dict"
+      },
+      {
+        "category": "context",
+        "bytes_utf8": 26072,
+        "bytes_ascii": 37591,
+        "tokens_cl100k": 12024,
+        "tokens_o200k": 9844,
+        "type": "dict"
+      },
+      {
+        "category": "disclosures",
+        "bytes_utf8": 2541,
+        "bytes_ascii": 3228,
+        "tokens_cl100k": 1027,
+        "tokens_o200k": 919,
+        "type": "list"
+      },
+      {
+        "category": "signals",
+        "bytes_utf8": 2251,
+        "bytes_ascii": 3448,
+        "tokens_cl100k": 1093,
+        "tokens_o200k": 847,
+        "type": "dict"
+      },
+      {
+        "category": "financials",
+        "bytes_utf8": 1025,
+        "bytes_ascii": 1294,
+        "tokens_cl100k": 545,
+        "tokens_o200k": 479,
+        "type": "dict"
+      },
+      {
+        "category": "indicators",
+        "bytes_utf8": 625,
+        "bytes_ascii": 742,
+        "tokens_cl100k": 311,
+        "tokens_o200k": 282,
+        "type": "dict"
+      },
+      {
+        "category": "consensus",
+        "bytes_utf8": 617,
+        "bytes_ascii": 617,
+        "tokens_cl100k": 244,
+        "tokens_o200k": 245,
+        "type": "dict"
+      },
+      {
+        "category": "flow",
+        "bytes_utf8": 486,
+        "bytes_ascii": 501,
+        "tokens_cl100k": 216,
+        "tokens_o200k": 210,
+        "type": "dict"
+      },
+      {
+        "category": "realtime",
+        "bytes_utf8": 318,
+        "bytes_ascii": 318,
+        "tokens_cl100k": 115,
+        "tokens_o200k": 115,
+        "type": "dict"
+      },
+      {
+        "category": "events",
+        "bytes_utf8": 308,
+        "bytes_ascii": 308,
+        "tokens_cl100k": 119,
+        "tokens_o200k": 119,
+        "type": "dict"
+      },
+      {
+        "category": "volatility",
+        "bytes_utf8": 176,
+        "bytes_ascii": 176,
+        "tokens_cl100k": 69,
+        "tokens_o200k": 69,
+        "type": "dict"
+      },
+      {
+        "category": "insider_trades",
+        "bytes_utf8": 74,
+        "bytes_ascii": 74,
+        "tokens_cl100k": 30,
+        "tokens_o200k": 30,
+        "type": "dict"
+      },
+      {
+        "category": "name",
+        "bytes_utf8": 14,
+        "bytes_ascii": 26,
+        "tokens_cl100k": 7,
+        "tokens_o200k": 5,
+        "type": "str"
+      },
+      {
+        "category": "code",
+        "bytes_utf8": 8,
+        "bytes_ascii": 8,
+        "tokens_cl100k": 4,
+        "tokens_o200k": 4,
+        "type": "str"
+      },
+      {
+        "category": "market",
+        "bytes_utf8": 4,
+        "bytes_ascii": 4,
+        "tokens_cl100k": 3,
+        "tokens_o200k": 3,
+        "type": "str"
+      }
+    ]
+  },
+  "without_base": {
+    "categories_succeeded": 11,
+    "categories_total": 11,
+    "coverage_pct": 100.0,
+    "errors": {},
+    "bytes_utf8": 34828,
+    "bytes_ascii": 48644,
+    "tokens_cl100k": 15891,
+    "tokens_o200k": 13255,
+    "category_breakdown": [
+      {
+        "category": "context",
+        "bytes_utf8": 26072,
+        "bytes_ascii": 37591,
+        "tokens_cl100k": 12024,
+        "tokens_o200k": 9844,
+        "type": "dict"
+      },
+      {
+        "category": "disclosures",
+        "bytes_utf8": 2541,
+        "bytes_ascii": 3228,
+        "tokens_cl100k": 1027,
+        "tokens_o200k": 919,
+        "type": "list"
+      },
+      {
+        "category": "signals",
+        "bytes_utf8": 2251,
+        "bytes_ascii": 3448,
+        "tokens_cl100k": 1093,
+        "tokens_o200k": 847,
+        "type": "dict"
+      },
+      {
+        "category": "financials",
+        "bytes_utf8": 1025,
+        "bytes_ascii": 1294,
+        "tokens_cl100k": 545,
+        "tokens_o200k": 479,
+        "type": "dict"
+      },
+      {
+        "category": "indicators",
+        "bytes_utf8": 625,
+        "bytes_ascii": 742,
+        "tokens_cl100k": 311,
+        "tokens_o200k": 282,
+        "type": "dict"
+      },
+      {
+        "category": "consensus",
+        "bytes_utf8": 617,
+        "bytes_ascii": 617,
+        "tokens_cl100k": 244,
+        "tokens_o200k": 245,
+        "type": "dict"
+      },
+      {
+        "category": "flow",
+        "bytes_utf8": 486,
+        "bytes_ascii": 501,
+        "tokens_cl100k": 216,
+        "tokens_o200k": 210,
+        "type": "dict"
+      },
+      {
+        "category": "realtime",
+        "bytes_utf8": 318,
+        "bytes_ascii": 318,
+        "tokens_cl100k": 115,
+        "tokens_o200k": 115,
+        "type": "dict"
+      },
+      {
+        "category": "events",
+        "bytes_utf8": 308,
+        "bytes_ascii": 308,
+        "tokens_cl100k": 119,
+        "tokens_o200k": 119,
+        "type": "dict"
+      },
+      {
+        "category": "volatility",
+        "bytes_utf8": 176,
+        "bytes_ascii": 176,
+        "tokens_cl100k": 69,
+        "tokens_o200k": 69,
+        "type": "dict"
+      },
+      {
+        "category": "insider_trades",
+        "bytes_utf8": 74,
+        "bytes_ascii": 74,
+        "tokens_cl100k": 30,
+        "tokens_o200k": 30,
+        "type": "dict"
+      },
+      {
+        "category": "name",
+        "bytes_utf8": 14,
+        "bytes_ascii": 26,
+        "tokens_cl100k": 7,
+        "tokens_o200k": 5,
+        "type": "str"
+      },
+      {
+        "category": "code",
+        "bytes_utf8": 8,
+        "bytes_ascii": 8,
+        "tokens_cl100k": 4,
+        "tokens_o200k": 4,
+        "type": "str"
+      },
+      {
+        "category": "market",
+        "bytes_utf8": 4,
+        "bytes_ascii": 4,
+        "tokens_cl100k": 3,
+        "tokens_o200k": 3,
+        "type": "str"
+      }
+    ]
+  },
+  "base_inspection": {
+    "economy_keys": [
+      "market",
+      "context",
+      "content",
+      "cycle_phase",
+      "scenario_probs",
+      "updated_at",
+      "expires_at"
+    ],
+    "economy_body_len": 0,
+    "industry_keys": [
+      "code",
+      "market",
+      "name",
+      "name_en",
+      "parent_code",
+      "meta",
+      "market_specific",
+      "score",
+      "content",
+      "cycle_phase",
+      "momentum_rs_3m",
+      "momentum_rs_6m",
+      "leader_followers",
+      "avg_per",
+      "avg_pbr",
+      "avg_roe",
+      "avg_op_margin",
+      "vol_baseline_30d",
+      "updated_at",
+      "expires_at"
+    ],
+    "industry_body_len": 0,
+    "stock_keys": [
+      "code",
+      "total_score",
+      "financial_score",
+      "industry_score",
+      "economy_score",
+      "grade",
+      "fair_value_min",
+      "fair_value_avg",
+      "fair_value_max",
+      "analyst_target_avg",
+      "analyst_target_max",
+      "analyst_consensus_count",
+      "per",
+      "pbr",
+      "psr",
+      "ev_ebitda",
+      "roe",
+      "roa",
+      "op_margin",
+      "net_margin",
+      "debt_ratio",
+      "eps",
+      "bps",
+      "dividend_yield",
+      "market_cap",
+      "fundamentals_extra",
+      "narrative",
+      "risks",
+      "scenarios",
+      "content",
+      "updated_at",
+      "expires_at"
+    ],
+    "stock_body_len": 0
+  },
+  "disclosures_inspection": {
+    "count": 10,
+    "first_keys": [
+      "corp_code",
+      "corp_name",
+      "stock_code",
+      "corp_cls",
+      "report_nm",
+      "rcept_no",
+      "flr_nm",
+      "rcept_dt",
+      "rm"
+    ]
+  },
+  "insider_inspection": {
+    "count": 0,
+    "summary_90d": {
+      "buy_count": 0,
+      "sell_count": 0
+    },
+    "first_keys": []
+  },
+  "bytes_ratio_with_over_without": 1.764,
+  "tokens_cl100k_ratio_with_over_without": 1.794,
+  "finished_at": 1777810168.9667652
+}

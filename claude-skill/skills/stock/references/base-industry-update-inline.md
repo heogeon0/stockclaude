@@ -18,33 +18,37 @@ name: 산업 코드 (KR 한글 슬러그 또는 us-{gics_sector_slug})
 
 ## 0단계 — 진입 가드
 
-- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 산업/종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 8 섹션을 처음부터 작성**.
-- **WebSearch 횟수 제한**: 4회 이내 (점유율 / 규제 / M&A / 기술). 압축 시도 금지.
+- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 산업/종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 11 섹션을 처음부터 작성 (Frontmatter + 사이클 단계 + RS 모멘텀 + 리더/팔로워 — v4 신설 포함)**.
+- **정형 MCP 우선** — 산업 평균 메트릭은 `compute_industry_metrics` 1회로 자동 산출. 5 차원 본문(점유율/규제/M&A/기술/사이클)은 정형 미커버라 WebSearch 권장.
 - 한 번의 호출 = 한 산업. 여러 산업 stale 이면 산업별로 절차를 따로따로 실행.
 
 ---
 
 ## 1단계 — 데이터 수집
 
-| 차원 | 소스 |
-|---|---|
-| 사이클 | WebSearch (애널 리포트 / 산업 뉴스) |
-| 점유율 | WebSearch (가트너, IDC 등 조사기관) + 기업 IR |
-| 규제 | WebSearch + 정부 공식 발표 |
-| 경쟁 | WebSearch (M&A / 분사 / 신규 진입) |
-| 기술 | WebSearch (학회 / 기업 공식 발표) |
+**산업 평균 메트릭(정량)은 정형 MCP 1회. 5 차원 본문(정성)은 WebSearch 권장 — 정형 자산 거의 없음.**
 
-WebSearch 표준 쿼리 (필요 분만):
+| 차원 | 정형 MCP (1차) | WebSearch 권장 (도메인 한정) |
+|---|---|---|
+| 산업 평균 메트릭 (avg_per/pbr/roe/op_margin/vol_baseline_30d) | **`compute_industry_metrics(industry_code)`** — leader 종목 평균 자동 산출 | — |
+| 사이클 | — | 애널 리포트 / 산업 뉴스 (`site:hankyung.com OR site:bloomberg.com`) |
+| 점유율 | — | 가트너 / IDC / 카운터포인트 (`Gartner OR IDC market share`) + 기업 IR |
+| 규제 | — | `site:fsc.go.kr OR site:sec.gov OR site:europa.eu` |
+| 경쟁 (M&A·분사) | `compute_industry_metrics` 의 leaders 변동 + leader 종목별 `get_kr_disclosures` / `get_us_disclosures` | M&A 루머 / 비공식 보도 |
+| 기술 | — | 학회 / 기업 공식 발표 (`site:arxiv.org OR site:nature.com` 등) |
+
+WebSearch 권장 쿼리 (도메인 한정 강력 권장):
 ```
-"YYYY {산업} 시장 점유율 최신"
-"YYYY {산업} 규제 정책 변화"
-"YYYY {산업} M&A 인수합병"
-"YYYY {산업} 기술 트렌드"
+"YYYY {산업} 시장 점유율" Gartner OR IDC
+site:fsc.go.kr OR site:sec.gov "{산업}" 규제
+site:bloomberg.com OR site:reuters.com "{산업}" M&A YYYY
 ```
+
+> v6 산업 표준 메트릭(avg_per/pbr/roe/op_margin/vol_baseline_30d)은 `compute_industry_metrics` 1회 호출로 자동 산출 — 수동 산출(WebSearch + DART/EDGAR) 불필요.
 
 ---
 
-## 2단계 — 본문 재작성 (8 섹션)
+## 2단계 — 본문 재작성 (11 섹션 — v4 사이클 단계/RS 모멘텀/리더 팔로워 포함)
 
 표준 템플릿: → `~/.claude/skills/stock/assets/industry-base-template.md` (있다면) 참조.
 
@@ -127,7 +131,7 @@ save_industry(
 ```
 
 ⚠️ v6 산업 표준 메트릭 작성 의무:
-- 산업 Top 5~15 종목의 PER / PBR / ROE / 영업이익률 / RV 평균 산출 (WebSearch + DART/EDGAR)
+- **`compute_industry_metrics(industry_code)` 1회 호출로 자동 산출** — leader_followers.leaders 종목들에 compute_financials + 30일 RV 적용한 평균. 결과의 avg_per/avg_pbr/avg_roe/avg_op_margin/vol_baseline_30d 그대로 인자에 전달.
 - 이 값이 종목 분석 시 financial_grade 결정의 anchor — 정확성 중요
 - 누락 시 종목 분석에서 절대값 anchor 로 회귀 위험
 
@@ -189,4 +193,4 @@ assert result['score'] == <저장값>
 
 ---
 
-> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 industry 본문에 끌어오지 않는다. 깨끗한 상태로 8 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `industries` 행은 7일 동안 daily/research/종목 base 작성 시 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
+> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 industry 본문에 끌어오지 않는다. 깨끗한 상태로 11 섹션을 처음부터 작성 (Frontmatter + 사이클 단계 + RS 모멘텀 + 리더/팔로워 — v4 신설 포함)한다. **섹션 압축·생략 금지** — `industries` 행은 7일 동안 daily/research/종목 base 작성 시 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).

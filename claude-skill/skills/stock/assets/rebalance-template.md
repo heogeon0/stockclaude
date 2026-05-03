@@ -54,12 +54,13 @@
    - {섹터A} XX% → YY%
    - {섹터B} XX% → YY%
 
-## 변동성×재무 매트릭스 적용
+## 진입 사이즈 / 피라미딩 / 손절 결정 (v6, LLM 본문 판단)
 
 각 신규 종목에 대해:
-- 변동성 등급 (analyze_volatility) × 재무 등급 (compute_financials) → 셀
-- 진입 사이즈 / 피라미딩 단계 / 손절폭 결정
-- `~/.claude/skills/stock/references/scoring-weights.md` 매트릭스 참조
+- 변동성 regime (`analyze_volatility(code).regime`) — normal / high / extreme
+- 재무 grade — 산업 평균 대비 본문 판단 (`industries.avg_per/avg_pbr/avg_roe/avg_op_margin`)
+- 진입 사이즈 / 피라미딩 / 손절폭 — `~/.claude/skills/stock/references/master-principles.md` 10 카테고리 인용 (손익 관리 / 변동성 관리 / 사이클 인식)
+- 옛 12셀 매트릭스 (`_archive/scoring-weights.md`) 인용 X (anchor 효과로 폐기)
 
 ## 한 줄 결론
 

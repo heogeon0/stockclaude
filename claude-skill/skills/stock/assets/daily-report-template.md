@@ -204,9 +204,10 @@
 
 ---
 
-## 📰 뉴스 / 촉매 (WebSearch 당일 — BLOCKING #7)
-- [날짜 / 헤드라인 / 출처]
-- 5종 추가 조건 충족 여부 → references/websearch-rules.md 참조
+## 📰 뉴스 / 촉매 (WebSearch — v7 자율 호출)
+- [날짜 / 헤드라인 / 출처] — `analyze_position.disclosures` / `insider_trades` 가 정형으로 커버 안 되는 nuance 발견 시만 자율 호출
+- 단위별 권장 강도 → `references/websearch-rules.md` (종목/economy/industry/stock 단위별 표)
+- 자율 search 미수행 시: "정형 데이터로 충분 — 자율 search 미수행" 명시
 
 ## 🎯 Watch Levels 자동 — `propose_watch_levels(entry, atr, tier)`
 - 1차 목표 / 2차 / 3차 (가격 + 현재가 대비 %)
@@ -229,7 +230,7 @@
 - 주요 레벨 (저항 / 지지 / 손절)
 - 변동성 regime + drawdown 상태
 
-### 포지션별 권장 행동 (변동성×재무 매트릭스 — `stock/references/scoring-weights.md`)
+### 포지션별 권장 행동 (LLM 본문 판단 — `stock/references/master-principles.md` 10 카테고리 인용. v6 매트릭스 폐기)
 - 현재 수익률 + 손익분기 거리
 - **집행 전 `check_concentration()` 결과 인용**
 - `propose_watch_levels` 결과로 피라미딩 / 손절 / 익절 **주 단위 구체 가격**

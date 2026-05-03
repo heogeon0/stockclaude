@@ -17,34 +17,39 @@ market: "kr" | "us"
 
 ## 0단계 — 의존성 / 진입 가드
 
-- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오 등) 를 economy 본문에 인용하지 않음. **깨끗한 상태로 8 섹션을 처음부터 작성**.
-- **WebSearch 횟수 제한**: 4회 이내 (FOMC/한은, CPI/PCE, 외인 수급, 환율). 압축 시도 금지.
+- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오 등) 를 economy 본문에 인용하지 않음. **깨끗한 상태로 10 섹션을 처음부터 작성 (Frontmatter + 8 본문 + Daily Facts — v4 시나리오 트리/사이클 단계 포함)**.
+- **정형 MCP 우선** — 1단계 표의 "MCP" 컬럼이 1차 소스. WebSearch 는 정형 미커버 nuance(발언 톤·지정학·시장 해석) 발견 시 LLM 자율 호출.
 - 본 절차 진행 중 daily/research 본문에 매크로 결과를 추가 inline 작성하지 말 것 (저장 후 daily 가 `get_economy_base` 로 다시 읽음).
 
 ---
 
 ## 1단계 — 데이터 수집
 
-| 차원 | 소스 | 핵심 메트릭 |
-|---|---|---|
-| 금리 | FRED (미국) / 한은 / WebSearch | FOMC, 한은 기준금리, 2s10s, 10년물 |
-| 환율 | FRED / WebSearch | USD/KRW, DXY, 주요 통화 |
-| 경기 | `detect_market_regime` + WebSearch | 코스피 국면 4조건, GDP, 수출 |
-| 지정학 | WebSearch | 중동 / 미중 / 우크라 / 제재 / 무역 |
-| 섹터 | 산업 base 종합 (`get_industry`) | Overweight / Neutral / Underweight |
-| 외국인 수급 | KRX / WebSearch | 월/주 누적, 최근 5일 추이 |
+**정형 MCP 우선, WebSearch 는 보조** — v1 신규 4 정형 매크로 툴이 수치 부분 90%+ 커버.
 
-WebSearch 표준 쿼리 (필요 분만):
+| 차원 | 정형 MCP (1차) | WebSearch 권장 시점 (보조) |
+|---|---|---|
+| 금리 (KR) | `get_macro_indicators_kr(["722Y001"])` (한국은행 기준금리) | 금통위 직후 발언 톤·향후 가이던스 시 |
+| 금리 (US) | `get_macro_indicators_us(["DFF","DGS10","DGS2","DGS3MO"])` + `get_yield_curve()` | FOMC 직후 의장 기자회견 톤 시 |
+| 환율 | `get_fx_rate(pair="DEXKOUS")` (FRED) + KR 추가 시 `get_macro_indicators_kr(["731Y004"])` | 급변동 시 사유(개입·자금흐름) 추측 |
+| 물가 (US/KR) | `get_macro_indicators_us(["CPIAUCSL"])` / `get_macro_indicators_kr(["901Y009"])` | 발표 직후 시장 반응 해석 |
+| 경기·매크로 이벤트 | `detect_market_regime` + `get_economic_calendar(country=...)` (Finnhub) | — (정형 충분) |
+| 외국인 수급 (KR) | `analyze_flow` (포트 종목) + KR 통계 (`get_macro_indicators_kr`) | 월/주 추세 해석 시 |
+| 지정학 | — (정형 자산 거의 없음) | **WebSearch 권장** — 중동·미중·제재·무역 |
+| 섹터 | `get_industry(code)` 종합 | — |
+
+WebSearch 권장 쿼리 (자율 판단 — 도메인 한정 권장):
 ```
-"YYYY-MM-DD FOMC 결정 금리"
-"YYYY-MM-DD CPI 발표 컨센서스"
-"YYYY-MM-DD 외국인 코스피 순매수"
-"YYYY-MM-DD 한은 금통위"
+site:cnbc.com OR site:reuters.com FOMC 발언 톤 YYYY-MM
+site:bok.or.kr OR site:edaily.co.kr 금통위 결정 YYYY-MM
+"한반도 OR 중동 OR 미중" 지정학 위험 YYYY-MM-DD
 ```
+
+> 강제 호출 횟수 X — 정형으로 답이 나오는 차원은 search skip OK. 발언 톤·지정학 등 정형 미커버 영역만 자율 호출.
 
 ---
 
-## 2단계 — 본문 재작성 (8 섹션)
+## 2단계 — 본문 재작성 (10 섹션 — v4 시나리오 트리/사이클 단계 포함)
 
 표준 템플릿: → `~/.claude/skills/stock/assets/economy-base-template.md` (있다면) 참조. 없으면 아래 구조 그대로.
 
@@ -186,4 +191,4 @@ assert result['updated_at'] > <save 호출 직전 시각>
 
 ---
 
-> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 economy 본문에 끌어오지 않는다. 깨끗한 상태로 8 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `economy_base` 는 1일 동안 daily/research/discover 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
+> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과를 economy 본문에 끌어오지 않는다. 깨끗한 상태로 10 섹션을 처음부터 작성 (Frontmatter + 8 본문 + Daily Facts — v4 시나리오 트리/사이클 단계 포함)한다. **섹션 압축·생략 금지** — `economy_base` 는 1일 동안 daily/research/discover 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).

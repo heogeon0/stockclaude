@@ -127,15 +127,13 @@ check_concentration(code, qty)   # 비중 시뮬
 
 ## 변동성×재무 매트릭스 적용
 
-추천 시 진입 사이즈 / 피라미딩 / 손절 자동 결정:
+추천 시 진입 사이즈 / 피라미딩 / 손절 — **LLM 본문 판단** (v6 매트릭스 폐기 후):
 
-- 변동성: `analyze_volatility(code).regime` → normal / high / extreme
-- 재무: `compute_score(code).breakdown.financial` → A / B / C / D
-- 셀별: 진입 사이즈 (풀/70%/50%/30%/비추) / 피라미딩 단계 / 손절폭
+- 변동성 regime: `analyze_volatility(code).regime` → normal / high / extreme
+- 재무 grade: 산업 평균 대비 본문 판단 (`industries.avg_per/avg_pbr/avg_roe/avg_op_margin` 인용)
+- 진입 사이즈 / 피라미딩 / 손절폭 결정: → `~/.claude/skills/stock/references/master-principles.md` 의 손익 관리 / 변동성 관리 / 사이클 인식 카테고리
 
-→ 12셀 매트릭스: `~/.claude/skills/stock/references/scoring-weights.md` 참조.
-
-**D급 + extreme 셀 = 비추** — 자동 탈락.
+> 옛 12셀 매트릭스 (`_archive/scoring-weights.md`) 는 anchor 효과로 폐기. 인용 X — 산업 평균 + 산업 RS + 변동성 regime 종합 LLM 본문 판단.
 
 ---
 

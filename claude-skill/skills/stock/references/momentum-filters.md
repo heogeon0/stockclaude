@@ -61,13 +61,15 @@ IF 청산 필터 1개 이상 발생
 THEN 청산 후보
 ```
 
-## 단계별 청산 (변동성×재무 매트릭스)
+## 단계별 청산 (LLM 본문 판단, v6 매트릭스 폐기 후)
 
-청산 트리거 발생 시 일괄 매도가 아니라 **셀별 단계 매도**:
+청산 트리거 발생 시 일괄 매도가 아니라 **단계 매도** — 변동성 regime + 재무 grade 본문 판단으로 결정:
 
-- → `~/.claude/skills/stock/references/scoring-weights.md` 의 손절폭 / 피라미딩 단계 룰 참조
-- 변동성 normal × A급 → 1차 손절선에서 50% 매도, 2차에서 잔여
-- 변동성 extreme × D급 → 1차 손절선에서 전량 (타이트)
+- 판단 룰: → `~/.claude/skills/stock/references/master-principles.md` 의 손익 관리 / 변동성 관리 / 추세 추종 카테고리 인용
+- 일반 가이드 (anchor 금지, 케이스별 판단):
+  - 변동성 normal + 재무 우량 (산업 평균 ROE/op_margin 상회) → 1차 손절선 50% 매도, 2차 잔여
+  - 변동성 extreme + 재무 약세 → 1차 손절선 전량 타이트
+- v6 옛 매트릭스 룩업 (`_archive/scoring-weights.md`) 인용 X — 산업 평균 대비 본문 판단 우선
 
 ## 시장 국면 Off 시 일괄 행동
 
