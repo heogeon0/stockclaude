@@ -1,11 +1,15 @@
-# 딜 레이더 WebSearch 체크리스트 (6종)
+# 딜 레이더 체크리스트 (6종 — 정형 우선 + WebSearch 권장)
 
 > 로드 시점: stock-research 또는 base-stock 의 "딜 레이더" 섹션 작성 시.
 > base-stock 과 cross-link (DRY 원칙: 본 파일이 정의처).
+> **정책 (v7, 2026-05)**: 강제 호출 폐지. 정형 MCP (`get_kr_disclosures` / `get_us_disclosures` / `get_kr_insider_trades` / `get_us_insider_trades` / `get_kr_major_shareholders`) 1차 → 정형 미커버(루머·시장 추측·경쟁사 동향)만 LLM 자율 WebSearch.
+> 정형 우선 매핑은 `base-stock-update-inline.md` 의 표 참조.
 
-## 6종 필수 WebSearch 카테고리
+## 6종 권장 카테고리 (정형 미커버 시)
 
-종목 분석 직전 또는 base 작성 시 6가지 모두 탐색.
+base 작성 시 6가지 카테고리를 순서대로 검토. 각 카테고리에 대해:
+1. 먼저 정형 MCP 호출 결과 확인
+2. 정형 미커버 nuance 발견 시 도메인 한정 WebSearch 자율 호출
 
 ### 1. Pending M&A — 해당 기업
 
@@ -85,8 +89,8 @@
 - 중기 (1~3개월): ±X%
 - 만약 인수 시 시너지 예상치 / 분사 시 SOTP 변화
 
-## 캐시 정책
+## 캐시 정책 (v7, 2026-05 — 강제 → 권장)
 
-- 딜 레이더는 base 작성 또는 30일 만기 갱신 시 매번 재실행
-- 단, 같은 일자 (24시간 내) 재실행 시 캐시 재사용 가능
-- 단, **stock-daily 의 review_needed 플래그 누적 3+** 시 즉시 재실행 (캐시 무효)
+- 딜 레이더는 base 작성 또는 30일 만기 갱신 시 검토 권장. 정형 MCP 결과는 항상 fresh 조회 (동일 세션 내 캐시 OK).
+- WebSearch 호출 시점: 정형 MCP 결과로 답 안 나오는 카테고리만 자율 호출.
+- `stock-daily` review_needed 플래그 누적 3+ 시 base 재검토 권장 신호.

@@ -5,15 +5,18 @@
 ```markdown
 ### ✅ Dependency Audit (YYYY-MM-DD)
 
-[BLOCKING 8가지]
+[BLOCKING 6가지 — v6 단순화, WebSearch 자율]
 - [x] get_portfolio_summary(yesterday) — 매칭 N건
-- [x] reconcile_actions(yesterday)
+- [x] reconcile_actions(yesterday) + reconcile_actions(today)
 - [x] detect_market_regime — {bull/bear/sideways}
-- [x] WebSearch 당일 뉴스 — {N개 이슈 확인}
 - [x] economy/{오늘}.md — 생성/로드
-- [x] get_stock_context — {N종} 로드 완료
-- [x] WebSearch 종목별 N/N
+- [x] analyze_position (include_base=True) — {N종} coverage 평균 X.X%
 - [x] get_weekly_context(weeks=4) — 적용 룰 강화 {요약}
+
+[참고 메트릭 — WebSearch 자율 호출 패턴]
+- 매크로 자율 search: {0~N회 + 사유}
+- per-stock 자율 search: {0~N회 + 종목별}
+- 정형 미커버 영역(industry 차원·지정학 등)에서 호출 권장
 
 [자동 재생성]
 - stocks/*/base.md: {재생성 종목} / {재생성 없음}
@@ -62,7 +65,6 @@
 
 ```markdown
 > ⚠️ **반쪽 daily — 아래 항목 누락**
-> - WebSearch 당일 뉴스 미수행
 > - compute_financials 005930 실패
 > - 086790 coverage 70% (consensus DB empty + financials 경고 처리 못함)
 > - NVDA/GOOGL OHLCV DB 미적재로 indicators/signals/events 분석 불가
@@ -80,8 +82,8 @@
 |---|---|---|---|
 | 0. 신선도 + 스코프 | `list_daily_positions`, `check_base_freshness(auto_refresh=True)` | 2 | ✅ |
 | 1. 과거 학습 회수 | `get_portfolio_summary(yest)`, `reconcile_actions(yest)`, **`list_trades`**, **`reconcile_actions(today)`**, `get_weekly_context` | 5 | ✅ |
-| 2. 매크로·국면 | `detect_market_regime`, `WebSearch` | 2 | ✅ |
-| 3. 종목 분석 | `analyze_position × N` (Active+Pending) + 종목별 WebSearch | N×2 | ✅ (avg coverage X.X%) |
+| 2. 매크로·국면 | `detect_market_regime` (+ 정형 매크로 / 자율 WebSearch) | 1~3 | ✅ |
+| 3. 종목 분석 | `analyze_position × N` (include_base=True, 1 MCP) + 자율 WebSearch | N (+자율) | ✅ (avg coverage X.X%) |
 | 4. 분류 (Cell+Verdict) | (Phase 3 derive) | — | ✅ |
 | 5. 액션 결정 | (decision-tree.md 적용) | — | ✅ |
 | 6. 게이트 | `check_concentration` (집행 시) | 0~N | — / ✅ |

@@ -55,21 +55,19 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
-## ⛔ 종목 1건 분석 단일 진입점
+## ⛔ 종목 1건 분석 단일 진입점 (5단계, v6 단순화)
 
-> 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 7단계 절차를 무조건 따른다**.
+> 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 5단계 절차를 무조건 따른다**.
 >
-> 자율 우회 금지 — '효율 우선' / '시간 절약' / '간단히 처리' 같은 LLM 능동 회피 패턴 차단.
-> 매 종목마다 이 절차로 진입. 7단계 다 돌려야 1건 완료.
+> v6 (2026-05) 단순화: 7단계 → 5단계. base 조회 + WebSearch 의무 단계 폐기. `analyze_position` 이 base 본문 inject + disclosures + insider 통합.
+> WebSearch 는 LLM 자율 — `websearch-rules.md` 가이드 참조.
 
 절차 요약 (상세는 `references/per-stock-analysis.md`):
-1. base 신선도 체크 (`check_base_freshness`)
-2. stale 갱신 (cascade economy → industry → stock, 각 inline 절차)
-3. base 조회 (`get_economy_base` + `get_industry` + `get_stock_context`)
-4. `analyze_position` (raw 데이터, scoring/cell/is_stale 없음)
-5. WebSearch (당일 뉴스, LLM 판단 **전** 의무)
-6. LLM 종합 판단 (판단 룰 인덱스 인용)
-7. 출력 + 저장 (`save_daily_report`, verdict 5종)
+1. **stale 조회** (`check_base_freshness`)
+2. **stale 갱신** (cascade economy → industry → stock, 발견 시만)
+3. **종목 분석** — `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 — base 본문 3층 + disclosures + insider + 정량 raw)
+4. **LLM 종합 판단** (필요시 자율 WebSearch)
+5. **출력 + 저장** (`save_daily_report`, verdict 5종)
 
 모드별 호출 위치:
 
@@ -290,7 +288,7 @@ inline 절차 완료 후 메인이 즉시:
 
 ---
 
-## MCP 56 툴 인벤토리
+## MCP 65 툴 인벤토리 (v1 +9, 2026-05)
 
 ### 📊 조회 (7)
 `get_portfolio`, `get_portfolio_summary`, `get_stock_context`, `get_applied_weights`, `list_trades`, `list_tradable_stocks`, `list_daily_positions`
@@ -329,6 +327,17 @@ inline 절차 완료 후 메인이 즉시:
 
 ### 🔧 base 조회 (3)
 `get_economy_base`, `get_industry`, `check_base_freshness`
+
+### 🌍 정형 매크로 (4) ⭐ v1 신규 (2026-05)
+`get_macro_indicators_us` (FRED 시계열 — DFF/CPI/UNRATE/DGS10/SP500 등),
+`get_yield_curve` (UST 3M~30Y + 10Y_3M_spread + 역전여부),
+`get_fx_rate` (FRED DEXKOUS 기본, 1일 TTL),
+`get_economic_calendar` (Finnhub 경제 캘린더 + 컨센서스)
+
+### 📰 공시 + insider (5) ⭐ v1 신규 (2026-05)
+`get_kr_disclosures` (DART 14일), `get_us_disclosures` (EDGAR 14일),
+`get_kr_insider_trades` (DART 임원·주요주주 거래), `get_kr_major_shareholders` (DART 대주주 현황),
+`get_us_insider_trades` (Finnhub 90일, 본문 파싱 OK)
 
 ### 🩺 운영 (1)
 `healthcheck` — 58 도구 + 8 스크래퍼 + DB 정합 + 신선도 일괄 점검 (quick=True 기본 ~30s)
