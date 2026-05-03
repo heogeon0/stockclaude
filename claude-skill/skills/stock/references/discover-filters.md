@@ -93,26 +93,25 @@ concentration = check_concentration(code, qty=intended_qty, price=current_price)
 
 ```python
 vol_regime = volatility.regime
-fin_score = score.breakdown.financial
+fin_ratios = financials.ratios
+fin_growth = financials.growth
 
-# 등급 매핑
-if fin_score >= 80: fin = 'A'
-elif fin_score >= 60: fin = 'B'
-elif fin_score >= 40: fin = 'C'
-else: fin = 'D'
+# v6 (2026-05): 매트릭스 룩업 폐지 (anchor 효과 + 검증 안 된 직관적 설계).
+# 산업 평균 대비 LLM 본문 판단 — industries.avg_per/avg_pbr/avg_roe/avg_op_margin 인용.
+# 거장 원칙은 master-principles.md 의 10 카테고리 참조.
 
-# 셀 룩업 (~/.claude/skills/stock/references/scoring-weights.md)
-cell = MATRIX[(fin, vol_regime)]
-# {'size': '풀'/'70%'/'50%'/'30%'/'비추',
-#  'pyramiding': 0~3,
-#  'stop': -5~-10}
+# 산업 평균 대비 financial_grade (A/B/C/D) 본문 판단
+# - PER vs industries.avg_per → 할인/프리미엄
+# - ROE vs industries.avg_roe → 우열
+# - 영업이익률 vs industries.avg_op_margin → 마진 우열
+# - 변동성 regime vs industries.vol_baseline_30d → regime 보정
 
-# D급+extreme = 비추
-if cell['size'] == '비추':
-    return None  # 추천 X
+# 진입 사이즈 / 피라미딩 / 손절폭은 LLM 본문 판단:
+# - master-principles 의 손익 관리 / 변동성 관리 / 사이클 인식 카테고리 인용
+# - check_concentration 게이트 통과 후 결정
 ```
 
-상세 매트릭스: → `~/.claude/skills/stock/references/scoring-weights.md` 참조.
+판단 룰: → `~/.claude/skills/stock/references/master-principles.md` (10 카테고리 거장 원칙). 옛 매트릭스 룩업은 `_archive/scoring-weights.md` 보존 — 인용 X.
 
 **단타/스윙/중장기/모멘텀 4종 폐지** (v17). `compute_score(code, '스윙')` 호출의 `'스윙'` 인자 제거 / 기본값 사용.
 

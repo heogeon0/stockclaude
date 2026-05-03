@@ -230,7 +230,7 @@
 - 주요 레벨 (저항 / 지지 / 손절)
 - 변동성 regime + drawdown 상태
 
-### 포지션별 권장 행동 (변동성×재무 매트릭스 — `stock/references/scoring-weights.md`)
+### 포지션별 권장 행동 (LLM 본문 판단 — `stock/references/master-principles.md` 10 카테고리 인용. v6 매트릭스 폐기)
 - 현재 수익률 + 손익분기 거리
 - **집행 전 `check_concentration()` 결과 인용**
 - `propose_watch_levels` 결과로 피라미딩 / 손절 / 익절 **주 단위 구체 가격**

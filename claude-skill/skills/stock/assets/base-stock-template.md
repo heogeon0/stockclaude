@@ -17,7 +17,7 @@ last full review: YYYY-MM-DD
 
 - 가중총점: XX.X → {Premium/Standard/Cautious/Defensive}
 - 재무 X / 산업 Y / 경제 Z / 밸류 V
-- 액션 템플릿 (변동성×재무 매트릭스 셀 기반): → `~/.claude/skills/stock/references/scoring-weights.md` 참조
+- 액션 결정 (LLM 본문 판단, v6 매트릭스 폐기 후): → `~/.claude/skills/stock/references/master-principles.md` 10 카테고리 인용 + 산업 평균 대비 본문 판단
 
 ---
 

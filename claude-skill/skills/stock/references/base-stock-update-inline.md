@@ -3,10 +3,10 @@
 > **stale stock_base 발견 또는 신규 종목 진입 시 메인 에이전트가 직접 수행하는 절차.**
 > 옛 `agents/base-stock-updater.md` (sub-agent) 폐기 → multi-device 운영 호환을 위해 inline 화.
 >
-> **단일 책임**: `stock_base` 테이블의 종목 1개 본문 (9 섹션) + 17 인자 + DB 저장 + read-back.
+> **단일 책임**: `stock_base` 테이블의 종목 1개 본문 (10 섹션) + 17 인자 + DB 저장 + read-back.
 > **언제**: `check_base_freshness` 결과 `stocks[*].is_stale=true` (만기 30일) 또는 `discover` 후 신규 종목 진입 시.
 > **누가**: stock skill 메인 LLM. sub-agent spawn 금지.
-> **분량**: 본문 ≥ 4KB 권장 (9 섹션 풀 작성).
+> **분량**: 본문 ≥ 4KB 권장 (10 섹션 풀 작성).
 
 ---
 
@@ -32,7 +32,7 @@ mode: "new" | "refresh"  # new = 처음 작성, refresh = 만기 갱신
 4. cascade 완료 후 본 절차 (1단계) 진입
 
 진입 가드:
-- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 9 섹션을 처음부터 작성**.
+- **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오) 를 본문에 인용하지 않음. **깨끗한 상태로 10 섹션을 처음부터 작성**.
 - **압축 시도 금지**: LLM '효율 추구' 본능으로 섹션 합치기·생략 금지. base 는 30일 사용되는 정식 문서 — 풀 분량.
 
 ---
@@ -89,7 +89,7 @@ compute_score(code)                       # 5차원 점수 + 등급 (5단계용)
 
 ---
 
-## 3단계 — 보고서 작성 (9 섹션)
+## 3단계 — 보고서 작성 (10 섹션)
 
 표준 템플릿: → `~/.claude/skills/stock/assets/base-stock-template.md`.
 
@@ -154,7 +154,7 @@ save_stock_base(
     narrative=<3-5줄 요약>,
     risks=<리스크 요약>,
     scenarios=<Bull/Base/Bear 1줄 each>,
-    content=<완성된 9 섹션 본문 — 4KB 이상 권장>,
+    content=<완성된 10 섹션 본문 — 4KB 이상 권장>,
 )
 ```
 
@@ -171,7 +171,7 @@ assert ctx['stock_base']['updated_at'] > <save 호출 직전 시각>
 assert len(ctx['stock_base']['content'] or '') >= 4000  # 4KB
 ```
 
-본문 길이 4KB 미달 시 9 섹션 중 누락 의심 → 재작성.
+본문 길이 4KB 미달 시 10 섹션 중 누락 의심 → 재작성.
 
 ---
 
@@ -190,11 +190,11 @@ assert len(ctx['stock_base']['content'] or '') >= 4000  # 4KB
 ## ✅ 완료 체크리스트
 
 - [ ] 0단계 cascade 완료 (economy/industry fresh 보장)
-- [ ] 9 섹션 모두 작성 + Daily Facts 통합/초기화
+- [ ] 10 섹션 모두 작성 + Daily Facts 통합/초기화
 - [ ] 17 인자 (code 제외) 모두 채움 — 점수 4 / 등급 1 / 컨센 4 / 재무 4 / 텍스트 4
 - [ ] `save_stock_base(...)` 호출 성공
 - [ ] `get_stock_context(code)` read-back — `updated_at` 갱신 확인
-- [ ] 본문 길이 ≥ 4KB (9 섹션 풀 분량 보장)
+- [ ] 본문 길이 ≥ 4KB (10 섹션 풀 분량 보장)
 
 ## 완료 시 메인이 정리할 것
 
@@ -215,4 +215,4 @@ assert len(ctx['stock_base']['content'] or '') >= 4000  # 4KB
 
 ---
 
-> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과 (다른 종목 분석·포트폴리오 컨텍스트 등) 를 본 종목 base 본문에 끌어오지 않는다. 깨끗한 상태로 9 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `stock_base` 는 30일 동안 daily/discover/research 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
+> **inline 진입 시 주의 (재강조)**: 메인이 다른 작업 (daily/research/discover) 중에 본 절차로 진입하더라도, 직전 작업의 결과 (다른 종목 분석·포트폴리오 컨텍스트 등) 를 본 종목 base 본문에 끌어오지 않는다. 깨끗한 상태로 10 섹션을 처음부터 작성한다. **섹션 압축·생략 금지** — `stock_base` 는 30일 동안 daily/discover/research 가 참조하는 정식 문서다 (LLM 의 '효율 추구' 본능을 의식적으로 차단할 것).
