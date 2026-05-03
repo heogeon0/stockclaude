@@ -14,7 +14,7 @@ stock skill 의 **research 모드** 호출. 6차원 정량 분석 (재무/기술
 
 ## 절차
 
-1. 의존성 체크 — base 만료 시 sub-agent spawn (cascade economy → industry → stock)
+1. 의존성 체크 — base 만료 시 메인이 inline 절차 진입 (cascade economy → industry → stock, sub-agent 폐기)
 2. Market 라우팅 (KR/US 자동) — LLM 직접 판단 (6자리 숫자 = KR / 1~5자 대문자 = US)
 3. 9 MCP 툴 일괄 호출 (재무 + 컨센 + 리포트 + 추이 + 수급 + 변동성 + 이벤트 + 등급 + 시그널)
 4. 6차원 verdict 산정
