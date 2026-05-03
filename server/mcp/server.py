@@ -2613,9 +2613,25 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
 
     # 1) context
     try:
+        # v4 fix (2026-05): stock_base content 는 카테고리 #12 (base) 에서만 풀 inject.
+        # context.base 는 메타만 (stale 여부 / 등급 / 짧은 narrative) — 5,283자 중복 직렬화 제거.
+        sb_row = _row_safe(stock_base.get_base(code))
+        sb_meta = None
+        if sb_row:
+            sb_meta = {
+                k: sb_row.get(k) for k in (
+                    "code", "updated_at", "expires_at",
+                    "grade", "total_score", "financial_score",
+                    "industry_score", "economy_score",
+                    "narrative", "risks", "scenarios",
+                    "fair_value_avg", "analyst_target_avg", "analyst_target_max",
+                    "analyst_consensus_count",
+                    "per", "pbr", "roe", "op_margin",
+                ) if k in sb_row
+            }
         bundle["context"] = {
             "stock": _row_safe(s_row),
-            "base": _row_safe(stock_base.get_base(code)),
+            "base": sb_meta,  # content 제거 — 풀 본문은 bundle["base"]["stock"] 에서 인용
             "latest_daily": _row_safe(stock_daily.get_latest(uid, code)),
             "position": _row_safe(positions.get_position(uid, code)),
             "watch_levels": [_row_safe(lv) for lv in watch_levels.list_by_code(uid, code)],
