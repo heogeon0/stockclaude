@@ -1,7 +1,7 @@
 # Daily Workflow — 일일 운영 절차
 
 > stock skill 의 daily 모드 진입 시 따라야 할 워크플로우.
-> v2 7-Phase Pipeline + BLOCKING 12 + 종목별 묶음 분석 + 매매 룰.
+> v6 7-Phase Pipeline (per-stock 5단계 정합) + BLOCKING 11 + 종목별 묶음 분석 + 매매 룰.
 > SKILL.md 본문은 호출 정책만 명시, 상세 절차는 이 파일에 분리.
 
 ---
@@ -119,15 +119,15 @@
 
 ---
 
-## 종목별 — `references/per-stock-analysis.md` 7단계 절차 적용
+## 종목별 — `references/per-stock-analysis.md` 5단계 절차 적용 (v6 단순화)
 
 종목 1건 분석 단일 진입점. 본문은 옮기지 않음 — 절차서 직접 인용.
 
-요약:
-1. base 신선도 체크 → 2. stale 갱신 (cascade) → 3. base 조회 (3층) → 4. `analyze_position(code)` raw 9 카테고리 → 5. WebSearch → 6. LLM 판단 → 7. `save_daily_report`
+요약 (v6, 2026-05):
+1. stale 조회 (`check_base_freshness`) → 2. stale 갱신 (cascade economy → industry → stock, 발견 시만) → 3. `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 통합) → 4. LLM 종합 판단 (필요시 자율 WebSearch) → 5. `save_daily_report`
 
-`analyze_position` 응답 카테고리 (raw 9):
-context / realtime / indicators / signals / financials raw (score 제거) / flow / volatility / events / consensus.
+`analyze_position` 응답 카테고리 (v4 보강 후 12종):
+**base** (3층 본문 inject) / context / realtime / indicators / signals / financials (raw, score 제거) / flow / volatility / events / consensus / **disclosures** (KR=DART 14일 / US=EDGAR 14일) / **insider_trades** (KR=major shareholders + exec / US=Finnhub 90일).
 **제거됨**: scoring / cell / is_stale (LLM 본문 판단 위임) / financials.score.
 
 ### 포트 단위 — 별도 호출 (per-stock-analysis 외부)
@@ -244,12 +244,8 @@ references:
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 룰 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
-- `websearch-rules.md` — WebSearch 의무 + 5종 추가 조건
+- `websearch-rules.md` — WebSearch 단위별 LLM 자율 가이드 (v7 — BLOCKING 폐지)
 - `weekly-context-rules.md` — 4가지 활용 룰
-- `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
-
-assets:
-- `daily-report-template.md`, `portfolio-summary-template.md`, `position-template.md`, `dependency-audit-template.md`, `economy-daily-template.md`
 - `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
 
 assets:
@@ -258,8 +254,3 @@ assets:
 - `position-template.md` — 보유 종목 position.md
 - `dependency-audit-template.md` — Audit 출력 + ⚠️ 반쪽 daily
 - `economy-daily-template.md` — economy/{날짜}.md 자동 생성
-
-scripts:
-- `detect_market.py` — KR/US 자동 판정
-- `concentration_check.py` — 집행 전 집중도 체크 fallback
-- `load_deps.py` — 직접 호출 모드 임포트 시퀀스 fallback

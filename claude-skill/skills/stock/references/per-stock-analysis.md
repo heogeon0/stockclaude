@@ -70,7 +70,7 @@ stale 차원에 대해 **cascade 순서 (economy → industry → stock)** 로 i
 > base 본문 inject 덕분에 별도 `get_economy_base` / `get_industry` / `get_stock_context` 호출 불필요. token cost 우려 시 `include_base=False` 명시 + 3층 base 별도 호출 옵션.
 
 ### 4단계 — LLM 종합 판단
-4단계 raw 데이터 + 5단계 뉴스 + 3단계 base 본문 + **회고 학습 + 거장 원칙** 종합.
+3단계 응답 (base 본문 3층 + 정량 raw + disclosures + insider) + **회고 학습 + 거장 원칙 + (필요시) 자율 WebSearch** 종합.
 
 #### 4단계 인풋 (필수 5개 — base 는 3단계 응답에 inject됨)
 ```
@@ -83,7 +83,7 @@ stale 차원에 대해 **cascade 순서 (economy → industry → stock)** 로 i
 
 > v6 변경: 별도 base 조회 단계 + WebSearch 의무 단계 폐기. 정형으로 부족한 nuance 발견 시 자율 WebSearch (`websearch-rules.md` 가이드).
 
-#### 6-1. 회고 인용 (v7 의무)
+#### 4-1. 회고 인용 (v7 의무)
 ```python
 get_weekly_context(weeks=4)
    → rule_win_rates: {rule_id: win_rate}
@@ -96,7 +96,7 @@ get_learned_patterns(status='principle')       # 시스템 격상 원칙
 
 ⚠️ rule_win_rates < 30% 룰은 **자제 권장**, 적용 시 reasoning 명시.
 
-#### 6-1.5. weekly_strategy 인용 (v8 의무)
+#### 4-1.5. weekly_strategy 인용 (v8 의무)
 ```python
 strategy = get_weekly_strategy()  # None 이면 첫 주
 ```
@@ -112,7 +112,7 @@ strategy = get_weekly_strategy()  # None 이면 첫 주
 
 ⚠️ `carry_over=True` 면 보고서 최상단에 "지난주 전략 사용 중 (이번 주 brainstorm 미작성)" 표기 의무.
 
-#### 6-2. 핵심 판단 흐름
+#### 4-2. 핵심 판단 흐름
 
 1. **변동성 regime + 재무 grade 로 셀 결정** — `analyze_position.volatility.regime` (서버) + `financials.ratios + growth` 본문 판단 (산업 평균 대비, A/B/C/D, **점수 anchor 금지**)
 2. **signals.summary.종합** 으로 verdict 1차 후보 (5종)
@@ -124,13 +124,13 @@ strategy = get_weekly_strategy()  # None 이면 첫 주
 
 → 최종 액션 + 사이즈 + 손절선 + reasoning.
 
-#### 6-3. 회고 인사이트 누적
+#### 4-3. 회고 인사이트 누적
 - 본 종목 분석에서 **새 패턴 발견** 시 `append_learned_pattern(tag, description, ...)` 호출 권장 (또는 weekly_review 작성 시 일괄)
 - 보고서 본문에 인용한 learned_patterns / rule_win_rates 명시
 
 ---
 
-## 판단 룰 인덱스 (LLM 이 6단계에서 인용)
+## 판단 룰 인덱스 (LLM 이 4단계에서 인용)
 
 룰 본문은 옮기지 않음. 필요 시 references 직접 Read.
 
