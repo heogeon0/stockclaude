@@ -9,8 +9,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SKILL_SRC="$REPO_ROOT/claude-skill/skills/stock"
-COMMANDS_SRC="$REPO_ROOT/claude-skill/commands"
+SKILL_SRC="$REPO_ROOT/.claude/skills/stock"
+COMMANDS_SRC="$REPO_ROOT/.claude/commands"
 
 CLAUDE_DIR="$HOME/.claude"
 SKILL_DEST="$CLAUDE_DIR/skills/stock"

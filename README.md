@@ -12,8 +12,8 @@ stockclaude/
 ├── web/            Vite + React + TypeScript + Tremor 대시보드
 ├── db/             PostgreSQL 15 schema + 예시 시드
 ├── scripts/        DB 마이그레이션 + 백업 스크립트
-└── claude-skill/   Claude Code 통합용 skill + slash command 정의
-    ├── skills/stock/   ~/.claude/skills/stock/ 으로 설치
+└── .claude/        Claude Code 통합용 skill + slash command 정의 (프로젝트 스킬, git 추적)
+    ├── skills/stock/   ~/.claude/skills/stock/ 으로 설치 (또는 프로젝트 스킬로 자동 로딩)
     └── commands/       ~/.claude/commands/ 로 설치
 ```
 

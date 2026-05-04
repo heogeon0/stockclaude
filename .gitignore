@@ -52,7 +52,6 @@ secrets/
 .kis_token.json
 
 # Claude Code local
-.claude/
 agent/
 
 # Runtime caches

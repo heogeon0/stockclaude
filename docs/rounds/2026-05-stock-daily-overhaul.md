@@ -101,14 +101,14 @@
 
 | 파일 | 역할 |
 |---|---|
-| `claude-skill/skills/stock/references/per-stock-analysis.md` | 종목 1건 분석 단일 진입점 (7단계 + 판단 룰 인덱스) |
-| `claude-skill/skills/stock/references/master-principles.md` | 거장 트레이딩 원칙 10 카테고리 (Livermore/Minervini/Buffett/Marks 등) |
-| `claude-skill/skills/stock/references/weekly-strategy-brainstorm.md` | 5단계 brainstorm 절차 (0단계 BLOCKING 신선도 체크 포함) |
-| `claude-skill/commands/stock-weekly-strategy.md` | 5번째 모드 wrapper command |
-| `claude-skill/skills/stock/assets/weekly-review-template.md` | 주간 회고 5섹션 템플릿 (정량 + 자연어) |
-| `claude-skill/skills/stock/references/_archive/scoring-weights.md` | 폐기된 12셀 매트릭스 (참고용) |
-| `claude-skill/skills/stock/references/_archive/decision-tree.md` | 폐기된 5×6 매트릭스 |
-| `claude-skill/skills/stock/references/_archive/position-action-rules.md` | 폐기된 6대 룰 |
+| `.claude/skills/stock/references/per-stock-analysis.md` | 종목 1건 분석 단일 진입점 (7단계 + 판단 룰 인덱스) |
+| `.claude/skills/stock/references/master-principles.md` | 거장 트레이딩 원칙 10 카테고리 (Livermore/Minervini/Buffett/Marks 등) |
+| `.claude/skills/stock/references/weekly-strategy-brainstorm.md` | 5단계 brainstorm 절차 (0단계 BLOCKING 신선도 체크 포함) |
+| `.claude/commands/stock-weekly-strategy.md` | 5번째 모드 wrapper command |
+| `.claude/skills/stock/assets/weekly-review-template.md` | 주간 회고 5섹션 템플릿 (정량 + 자연어) |
+| `.claude/skills/stock/references/_archive/scoring-weights.md` | 폐기된 12셀 매트릭스 (참고용) |
+| `.claude/skills/stock/references/_archive/decision-tree.md` | 폐기된 5×6 매트릭스 |
+| `.claude/skills/stock/references/_archive/position-action-rules.md` | 폐기된 6대 룰 |
 | `server/repos/learned_patterns.py` | 자연어 인사이트 → 정량 메모리 |
 | `server/repos/weekly_strategy.py` | 5번째 모드 repo (carry-over 로직 포함) |
 | `scripts/13_alter_base_phase_momentum.sql` | economy/industries 사이클 + 모멘텀 컬럼 |
@@ -123,11 +123,11 @@
 
 | 파일 | 핵심 변경 |
 |---|---|
-| `claude-skill/skills/stock/SKILL.md` | "종목 1건 분석 단일 진입점" 섹션 신설, 매트릭스 인용 → master-principles, 5 모드 표 |
-| `claude-skill/skills/stock/references/daily-workflow.md` | Phase 3 단순화 (per-stock-analysis 인용), Phase 4/5 갱신, BLOCKING 표 #11~13 갱신 |
-| `claude-skill/skills/stock/references/base-economy-update-inline.md` | 시나리오 트리 + 사이클 단계 섹션 추가, 새 인자 (cycle_phase / scenario_probs) |
-| `claude-skill/skills/stock/references/base-industry-update-inline.md` | 사이클 단계 + RS + 리더/팔로워 + 산업 표준 메트릭 5종 추가 |
-| `claude-skill/skills/stock/assets/daily-report-template.md` | "📐 Top-down 연결" + "📊 결론 메타" 섹션 신설 |
+| `.claude/skills/stock/SKILL.md` | "종목 1건 분석 단일 진입점" 섹션 신설, 매트릭스 인용 → master-principles, 5 모드 표 |
+| `.claude/skills/stock/references/daily-workflow.md` | Phase 3 단순화 (per-stock-analysis 인용), Phase 4/5 갱신, BLOCKING 표 #11~13 갱신 |
+| `.claude/skills/stock/references/base-economy-update-inline.md` | 시나리오 트리 + 사이클 단계 섹션 추가, 새 인자 (cycle_phase / scenario_probs) |
+| `.claude/skills/stock/references/base-industry-update-inline.md` | 사이클 단계 + RS + 리더/팔로워 + 산업 표준 메트릭 5종 추가 |
+| `.claude/skills/stock/assets/daily-report-template.md` | "📐 Top-down 연결" + "📊 결론 메타" 섹션 신설 |
 | `db/schema.sql` | industries 9 컬럼 / economy_base 2 컬럼 / stock_daily 6 컬럼 추가 |
 | `server/mcp/server.py` | analyze_position 슬림화 (scoring/cell/is_stale 제거, total 9), save_economy_base / save_industry / save_daily_report / save_weekly_review 시그니처 갱신, 신규 MCP 6종 (learned_patterns 3 + weekly_strategy 3) |
 | `server/repos/economy.py` | upsert_base 에 cycle_phase / scenario_probs 인자 |
