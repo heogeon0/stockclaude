@@ -28,6 +28,28 @@ def get_base(code: str) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def list_freshness_for_codes(codes: list[str]) -> dict[str, dict[str, Any]]:
+    """code → {code, updated_at, expires_at} dict batch (#26 perf — N+1 query 제거).
+
+    `check_base_freshness` 의 holdings 종목 만기 일괄 검사용. 단일 SELECT IN (...)
+    으로 N 종목당 1 query 호출 (이전: get_base × N).
+
+    빈 codes → 빈 dict.
+    """
+    if not codes:
+        return {}
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT code, updated_at, expires_at
+              FROM stock_base
+             WHERE code = ANY(%s)
+            """,
+            (list(codes),),
+        )
+        return {row["code"]: row for row in cur.fetchall()}
+
+
 def list_by_grade(grade: str) -> list[dict[str, Any]]:
     with get_conn() as conn:
         cur = conn.execute(

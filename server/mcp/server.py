@@ -203,6 +203,34 @@ def _row_safe(row: dict | None) -> dict | None:
     return out
 
 
+# =====================================================================
+# analyze_position 응답 size 가드 (#23, GS 147KB token 한도 사례)
+# =====================================================================
+
+# 최근 90일 raw rows 다대량 종목 (예: GS Form 4 다발) 대비.
+# total_count + truncated 메타 동반으로 LLM 이 cap 인지 가능.
+DISCLOSURES_MAX_ROWS = 20  # 14일치 raw — Big-tech 8-K 폭증 대비
+INSIDER_MAX_ROWS = 20      # 90일치 raw — Form 4 다발 종목 대비
+
+
+def _truncate_rows(rows: list[dict], max_rows: int) -> dict:
+    """rows 리스트를 cap + 메타 명시. count = 표시 행 수, total_count = 원본 행 수.
+
+    `truncated: True` 시 LLM 이 별도 MCP (`get_us_insider_trades` / `get_kr_disclosures`)
+    호출로 풀 행 조회 가능 — analyze_position 안에서는 응답 size 보호 우선.
+    """
+    if not rows:
+        return {"rows": [], "count": 0, "truncated": False}
+    if len(rows) <= max_rows:
+        return {"rows": rows, "count": len(rows), "truncated": False}
+    return {
+        "rows": rows[:max_rows],
+        "count": max_rows,
+        "total_count": len(rows),
+        "truncated": True,
+    }
+
+
 def _json_safe(obj: Any) -> Any:
     """numpy/pandas/Decimal/datetime 을 재귀적으로 JSON 원시 타입으로 변환.
 
@@ -711,7 +739,7 @@ def save_daily_report(
         key_factors=key_factors,
         referenced_rules=referenced_rules,
     )
-    return {"ok": True, "code": code, "date": date, "verdict": v, "chars": len(content)}
+    return {"ok": True, "code": code, "date": date, "verdict": v or None, "chars": len(content)}
 
 
 @mcp.tool
@@ -1086,10 +1114,8 @@ def portfolio_correlation(days: int = 60) -> dict:
         code = p["code"]
         market = p["market"]
         try:
-            if market == "kr":
-                df = _fetch_ohlcv(code, days=max(days, 20))
-            else:
-                df = kis.fetch_us_daily(code, days=days)
+            # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+            df = _fetch_ohlcv(code, days=max(days, 20))
             if df.empty:
                 continue
             df = df.sort_values("날짜").reset_index(drop=True)
@@ -1770,10 +1796,8 @@ def rank_momentum(
     rows = []
     for code in codes:
         try:
-            if market == "kr":
-                df = _fetch_ohlcv(code, days=max(lookback_days, 20))
-            else:
-                df = kis.fetch_us_daily(code, days=lookback_days)
+            # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+            df = _fetch_ohlcv(code, days=max(lookback_days, 20))
             if df is None or df.empty or len(df) < 60:
                 continue
             df = df.sort_values("날짜").reset_index(drop=True)
@@ -2367,14 +2391,31 @@ def refresh_us_consensus(codes: list[str] | None = None) -> dict:
 
 
 @mcp.tool
-def check_base_freshness(auto_refresh: bool = False) -> dict:
+def check_base_freshness(
+    scope: str = "all",
+    code: str | None = None,
+    auto_refresh: bool = False,
+) -> dict:
     """
     Active + Pending 포지션 종목의 base 만기 일괄 판정. LLM이 자연어 비교로 누락하지 않도록
     `is_stale: bool` + `auto_triggers: list[str]` 강제 반환.
 
     인자:
+      scope: 체크 범위 분기. 기본 "all" (기존 호환).
+        - "all"      : economy + industries + stocks 모두 (기존 동작)
+        - "economy"  : economy KR/US 만 (industries/stocks 빈 리스트)
+        - "industry" : industry 만. code 지정 시 해당 1건, 미지정 시 holdings 산업 전체.
+        - "stock"    : stock 만. code 지정 시 해당 종목 1건 + 그 종목의 industry_code 1건.
+                       code 미지정 시 holdings 종목 전체 + 산업 dedup.
+      code: scope ∈ {"industry", "stock"} 일 때만 의미. None이면 holdings 전체 대상.
       auto_refresh: True 시 stale 한 stock_base 를 즉시 refresh_stock_base() 자동 실행.
                     economy / industry 는 텍스트 작성 필요 → auto_triggers 만 반환 (수동 skill 호출).
+
+    호출 예시:
+      Phase 2 economy 단독:    check_base_freshness(scope="economy")
+      Phase 3 per-stock 단독:  check_base_freshness(scope="stock", code="005930")
+      특정 산업 단독:          check_base_freshness(scope="industry", code="G45")
+      기존 통합 (default):     check_base_freshness()
 
     만기 기준 (references/expiration-rules.md):
       - economy/base.md (kr/us)        : 1일
@@ -2395,8 +2436,15 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
             "results": {ok, fail, ...},
         }
       }
+      scope 가 "all" 외이면 해당 범위 외 키는 빈 리스트(`[]`)로 유지 (LLM 일관성).
     """
     from datetime import date as _date
+
+    valid_scopes = {"all", "economy", "industry", "stock"}
+    if scope not in valid_scopes:
+        raise ValueError(
+            f"invalid scope={scope!r} — must be one of {sorted(valid_scopes)}"
+        )
 
     uid = settings.stock_user_id
     today = _date.today()
@@ -2415,59 +2463,40 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
     EXP_INDUSTRY = 7
     EXP_STOCK = 30
 
-    # 1) economy bases
-    for market in ("kr", "us"):
-        row = economy.get_base(market)
-        if not row:
-            out["economy"].append({
-                "market": market, "age_days": None,
-                "expiry_days": EXP_ECONOMY,
-                "is_stale": True, "missing": True,
-                "trigger": f"/base-economy --{market}",
-            })
-            continue
-        age = _age(row.get("updated_at"))
-        is_stale = (age is None) or age >= EXP_ECONOMY
-        out["economy"].append({
-            "market": market, "age_days": age,
-            "expiry_days": EXP_ECONOMY,
-            "is_stale": is_stale, "missing": False,
-            "trigger": f"/base-economy --{market}" if is_stale else None,
-        })
+    do_economy = scope in ("all", "economy")
+    do_industry = scope in ("all", "industry")
+    do_stock = scope in ("all", "stock")
 
-    # 2) Daily-scope positions (Active + Pending) → stocks + industries
-    scope = positions.list_daily_scope(uid)
+    # 1) economy bases — scope ∈ {"all", "economy"}
+    if do_economy:
+        for market in ("kr", "us"):
+            row = economy.get_base(market)
+            if not row:
+                out["economy"].append({
+                    "market": market, "age_days": None,
+                    "expiry_days": EXP_ECONOMY,
+                    "is_stale": True, "missing": True,
+                    "trigger": f"/base-economy --{market}",
+                })
+                continue
+            age = _age(row.get("updated_at"))
+            is_stale = (age is None) or age >= EXP_ECONOMY
+            out["economy"].append({
+                "market": market, "age_days": age,
+                "expiry_days": EXP_ECONOMY,
+                "is_stale": is_stale, "missing": False,
+                "trigger": f"/base-economy --{market}" if is_stale else None,
+            })
+
+    # 2) industries / stocks — scope 에 따라 holdings 또는 단일 code 분기
     seen_inds: set[str] = set()
 
-    for p in scope:
-        code = p["code"]
-        name = p.get("name") or code
-
-        sb = stock_base.get_base(code)
-        if not sb:
-            out["stocks"].append({
-                "code": code, "name": name, "age_days": None,
-                "expiry_days": EXP_STOCK,
-                "is_stale": True, "missing": True,
-                "trigger": f"/base-stock {name}",
-            })
-        else:
-            age = _age(sb.get("updated_at"))
-            is_stale = (age is None) or age >= EXP_STOCK
-            out["stocks"].append({
-                "code": code, "name": name, "age_days": age,
-                "expiry_days": EXP_STOCK,
-                "is_stale": is_stale, "missing": False,
-                "trigger": f"/base-stock {name}" if is_stale else None,
-            })
-
-        s_row = stocks.get_stock(code)
-        ind_code = s_row.get("industry_code") if s_row else None
+    def _append_industry(ind_code: str | None, ind_row: dict | None = None) -> None:
+        """ind_row 가 주어지면 추가 query 없이 사용 (#26 perf — batch 경로)."""
         if not ind_code or ind_code in seen_inds:
-            continue
+            return
         seen_inds.add(ind_code)
-
-        ib = industries.get_industry(ind_code)
+        ib = ind_row if ind_row is not None else industries.get_industry(ind_code)
         if not ib:
             out["industries"].append({
                 "code": ind_code, "name": ind_code,
@@ -2484,6 +2513,71 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
                 "is_stale": is_stale, "missing": False,
                 "trigger": f"/base-industry {ind_code}" if is_stale else None,
             })
+
+    def _append_stock(p_code: str, p_name: str | None, sb_row: dict | None = None) -> None:
+        """sb_row 가 주어지면 추가 query 없이 사용 (#26 perf — batch 경로)."""
+        name = p_name or p_code
+        sb = sb_row if sb_row is not None else stock_base.get_base(p_code)
+        if not sb:
+            out["stocks"].append({
+                "code": p_code, "name": name, "age_days": None,
+                "expiry_days": EXP_STOCK,
+                "is_stale": True, "missing": True,
+                "trigger": f"/base-stock {name}",
+            })
+        else:
+            age = _age(sb.get("updated_at"))
+            is_stale = (age is None) or age >= EXP_STOCK
+            out["stocks"].append({
+                "code": p_code, "name": name, "age_days": age,
+                "expiry_days": EXP_STOCK,
+                "is_stale": is_stale, "missing": False,
+                "trigger": f"/base-stock {name}" if is_stale else None,
+            })
+
+    if scope == "stock" and code:
+        # 단일 종목 + 그 종목의 산업 1건만 (3 queries OK — small)
+        s_row = stocks.get_stock(code)
+        name = (s_row.get("name") if s_row else None) or code
+        _append_stock(code, name)
+        ind_code = s_row.get("industry_code") if s_row else None
+        _append_industry(ind_code)
+    elif scope == "industry" and code:
+        # 단일 산업만
+        _append_industry(code)
+    elif do_industry or do_stock:
+        # holdings 전체 대상 — #26 perf: N+1 → 3 batch queries 로 축소.
+        # 이전: positions(1) + stocks.get_stock×N + stock_base.get_base×N + industries.get_industry×M
+        # 현재: positions(1) + stocks.list_for_codes(1) + stock_base.list_freshness_for_codes(1)
+        #       + industries.list_freshness_for_codes(1) = **4 queries**.
+        scope_positions = positions.list_daily_scope(uid)
+        holding_codes = [p["code"] for p in scope_positions]
+
+        # Batch fetch — 빈 holdings 면 빈 dict 반환 (no-op)
+        stocks_map = stocks.list_for_codes(holding_codes) if (do_industry and holding_codes) else {}
+        sb_map = (
+            stock_base.list_freshness_for_codes(holding_codes)
+            if (do_stock and holding_codes) else {}
+        )
+        ind_codes_needed: list[str] = []
+        if do_industry:
+            ind_codes_needed = list({
+                s.get("industry_code") for s in stocks_map.values() if s.get("industry_code")
+            })
+        ind_map = (
+            industries.list_freshness_for_codes(ind_codes_needed)
+            if ind_codes_needed else {}
+        )
+
+        for p in scope_positions:
+            p_code = p["code"]
+            p_name = p.get("name") or p_code
+            if do_stock:
+                _append_stock(p_code, p_name, sb_row=sb_map.get(p_code))
+            if do_industry:
+                s_row = stocks_map.get(p_code) or {}
+                ind_code = s_row.get("industry_code")
+                _append_industry(ind_code, ind_row=ind_map.get(ind_code) if ind_code else None)
 
     # 3) Summary
     all_items = out["economy"] + out["industries"] + out["stocks"]
@@ -2607,9 +2701,8 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
     total = 12 if include_base else 11
 
     def _ohlcv() -> pd.DataFrame:
-        if market == "kr":
-            return _fetch_ohlcv(code, days=400)
-        return kis.fetch_us_daily(code, days=400)
+        # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+        return _fetch_ohlcv(code, days=400)
 
     # 1) context
     try:
@@ -2833,22 +2926,25 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
         bundle["errors"]["consensus"] = str(e)
 
     # 10) disclosures (v4 신규) — KR=DART / US=EDGAR 14일
+    # v9 (라운드 2026-05 사후, #23): 응답 size 가드. 다대량 종목 (8-K 폭증) 대비.
     try:
         if market == "us":
             from server.scrapers import edgar
             disc_df = edgar.fetch_disclosures(code, days=14)
         else:
             disc_df = dart.fetch_disclosures(code, days=14)
-        bundle["disclosures"] = (
+        all_disc = (
             disc_df.to_dict(orient="records")
             if disc_df is not None and not disc_df.empty else []
         )
+        bundle["disclosures"] = _truncate_rows(all_disc, max_rows=DISCLOSURES_MAX_ROWS)
         success += 1
     except Exception as e:
         bundle["errors"]["disclosures"] = str(e)
-        bundle["disclosures"] = []
+        bundle["disclosures"] = {"rows": [], "count": 0, "truncated": False}
 
     # 11) insider_trades (v4 신규) — KR=DART major_shareholders_exec / US=Finnhub 90일
+    # v9 (라운드 2026-05 사후, #23): GS 147KB token 한도 초과 사례 — rows cap + summary 강화.
     try:
         if market == "us":
             from server.scrapers import finnhub as fh
@@ -2859,24 +2955,33 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
             if ins_df is not None and not ins_df.empty and "rcept_dt" in ins_df.columns:
                 cutoff = (pd.Timestamp.now() - pd.Timedelta(days=90)).strftime("%Y%m%d")
                 ins_df = ins_df[ins_df["rcept_dt"] >= cutoff].copy()
-        rows = (
+        all_rows = (
             ins_df.to_dict(orient="records")
             if ins_df is not None and not ins_df.empty else []
         )
         # 90일 누적 매수/매도 합계 (US 만 가능 — KR raw 는 별도 매핑 필요)
         net_summary: dict = {"buy_count": 0, "sell_count": 0}
-        if market == "us" and rows:
-            for r in rows:
+        if market == "us" and all_rows:
+            for r in all_rows:
                 t = str(r.get("유형") or "").strip()
                 if t == "매수":
                     net_summary["buy_count"] += 1
                 elif t == "매도":
                     net_summary["sell_count"] += 1
-        bundle["insider_trades"] = {"rows": rows, "summary_90d": net_summary, "count": len(rows)}
+        truncated = _truncate_rows(all_rows, max_rows=INSIDER_MAX_ROWS)
+        bundle["insider_trades"] = {
+            "rows": truncated["rows"],
+            "summary_90d": net_summary,
+            "count": truncated["count"],          # 표시 rows 수 (cap 후)
+            "total_count": len(all_rows),         # 원본 rows 수 (cap 전)
+            "truncated": truncated["truncated"],
+        }
         success += 1
     except Exception as e:
         bundle["errors"]["insider_trades"] = str(e)
-        bundle["insider_trades"] = {"rows": [], "summary_90d": {}, "count": 0}
+        bundle["insider_trades"] = {
+            "rows": [], "summary_90d": {}, "count": 0, "total_count": 0, "truncated": False,
+        }
 
     # 12) base 본문 3층 inject (v4 신규, include_base=True 시) — economy/industry/stock
     if include_base:

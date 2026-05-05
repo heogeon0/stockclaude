@@ -102,7 +102,12 @@ def fetch_macro_indicators(series_ids: list[str] | None = None) -> dict:
 def fetch_fx_rate(pair: str = "DEXKOUS", date: str | None = None) -> dict:
     """
     환율 조회. 기본 DEXKOUS = KRW per USD (FRED).
-    1일 TTL 캐시.
+    1일 TTL 캐시. FRED 실패 시 yfinance KRW=X fallback (DEXKOUS pair 한정).
+
+    반환 dict 의 `source` 필드로 어느 경로에서 응답했는지 추적:
+      - "FRED": 1차 (FRED API 정상)
+      - "yfinance": 2차 (FRED 실패 → yfinance KRW=X)
+      - "FRED+yfinance" 둘 다 실패 → `환율: None` + `error` + `fallback_attempted` 명시
     """
     cache_key = f"{pair}:{date or 'latest'}"
     now = time.time()
@@ -111,25 +116,91 @@ def fetch_fx_rate(pair: str = "DEXKOUS", date: str | None = None) -> dict:
         if now - cached_at < _FX_TTL:
             return data
 
-    fred = _client()
-    s = fred.get_series(pair, observation_start=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"))
-    s = s.dropna()
-    if s.empty:
-        result = {"pair": pair, "환율": None, "기준일": None, "source": "FRED", "error": "no data"}
+    # 1차: FRED
+    fred_result = _try_fred_fx(pair, date)
+    if fred_result.get("환율") is not None:
+        _FX_CACHE[cache_key] = (now, fred_result)
+        return fred_result
+
+    # 2차 (FRED 실패): yfinance KRW=X (DEXKOUS = USDKRW = KRW per USD 와 동일)
+    if pair == "DEXKOUS":
+        yf_result = _try_yfinance_fx_krw_usd(date)
+        if yf_result.get("환율") is not None:
+            _FX_CACHE[cache_key] = (now, yf_result)
+            return yf_result
+        fallback_attempted = ["FRED", "yfinance"]
     else:
-        if date:
-            s = s[s.index <= pd.Timestamp(date)]
-        if s.empty:
-            result = {"pair": pair, "환율": None, "기준일": None, "source": "FRED"}
-        else:
-            result = {
-                "pair": pair,
-                "환율": float(s.iloc[-1]),
-                "기준일": s.index[-1].strftime("%Y-%m-%d"),
-                "source": "FRED",
-            }
+        fallback_attempted = ["FRED"]
+
+    # 모두 실패
+    result = {
+        "pair": pair,
+        "환율": None,
+        "기준일": None,
+        "source": "FRED",
+        "error": fred_result.get("error", "no data"),
+        "fallback_attempted": fallback_attempted,
+    }
     _FX_CACHE[cache_key] = (now, result)
     return result
+
+
+def _try_fred_fx(pair: str, date: str | None) -> dict:
+    """FRED 1차 시도. 실패 시 `환율: None` + `error` 반환 (예외 안 raise)."""
+    try:
+        fred = _client()
+        s = fred.get_series(
+            pair, observation_start=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        )
+        s = s.dropna()
+        if s.empty:
+            return {"pair": pair, "환율": None, "기준일": None, "source": "FRED", "error": "no data"}
+        if date:
+            s = s[s.index <= pd.Timestamp(date)]
+            if s.empty:
+                return {
+                    "pair": pair, "환율": None, "기준일": None,
+                    "source": "FRED", "error": "no data after date filter",
+                }
+        return {
+            "pair": pair,
+            "환율": float(s.iloc[-1]),
+            "기준일": s.index[-1].strftime("%Y-%m-%d"),
+            "source": "FRED",
+        }
+    except Exception as e:
+        return {"pair": pair, "환율": None, "기준일": None, "source": "FRED", "error": str(e)}
+
+
+def _try_yfinance_fx_krw_usd(date: str | None) -> dict:
+    """yfinance `KRW=X` 2차 fallback (DEXKOUS = KRW per USD 와 동일 의미)."""
+    try:
+        from server.scrapers import yfinance_client as yfc
+
+        df = yfc.fetch_ohlcv("KRW=X", period="5d")
+        if df is None or df.empty:
+            return {"pair": "DEXKOUS", "환율": None, "source": "yfinance", "error": "no data"}
+        if date and "날짜" in df.columns:
+            target = pd.Timestamp(date)
+            df = df[df["날짜"] <= target]
+            if df.empty:
+                return {
+                    "pair": "DEXKOUS", "환율": None,
+                    "source": "yfinance", "error": "no data after date filter",
+                }
+        last = df.iloc[-1]
+        close_val = last.get("종가")
+        date_val = last.get("날짜")
+        if close_val is None or pd.isna(close_val):
+            return {"pair": "DEXKOUS", "환율": None, "source": "yfinance", "error": "no close"}
+        return {
+            "pair": "DEXKOUS",
+            "환율": float(close_val),
+            "기준일": date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)[:10],
+            "source": "yfinance",
+        }
+    except Exception as e:
+        return {"pair": "DEXKOUS", "환율": None, "source": "yfinance", "error": str(e)}
 
 
 def fetch_yield_curve() -> dict:

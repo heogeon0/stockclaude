@@ -52,7 +52,6 @@ secrets/
 .kis_token.json
 
 # Claude Code local
-.claude/
 agent/
 
 # Runtime caches
@@ -62,8 +61,6 @@ docs_cache/
 # Playwright MCP artifacts
 .playwright-mcp/
 
-# MCP local config (paths machine-specific)
-.mcp.json
 
 # Reports (personal data)
 reports/

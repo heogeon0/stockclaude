@@ -55,18 +55,64 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
-## ⛔ 종목 1건 분석 단일 진입점 (5단계, v6 단순화)
+## ⛔ 환경 무관 실행 의무 (라운드 2026-05-daily-workflow-tightening)
+
+> **모바일 / Desktop / iOS Custom Connector 어떤 환경에서도 동일 워크플로우를 끝까지 수행한다.**
+> 토큰·시간·환경을 이유로 BLOCKING 단계를 임의 스킵·축약·우회하지 않는다.
+
+### 강제 룰
+
+1. **BLOCKING 22개 전부 실행** — `references/daily-workflow.md` 의 BLOCKING 표 22행을 환경 무관 모두 호출. "모바일이라 토큰 부담"·"세션 길어진다"·"빠르게 끝내자" 등은 스킵 사유 X.
+2. **WebSearch BLOCKING 전부 실행** — Phase 2 economy 2회 + Phase 3 per-stock 1회/종목 + base inline 절차의 BLOCKING (`references/websearch-rules.md` v8 매트릭스). 도메인 화이트리스트 (`references/websearch-domains.md`) 준수.
+3. **base inline 절차 풀 수행** — `base-{economy,industry,stock}-update-inline.md` 의 단계·체크리스트·완료 검증 모두. *"섹션 압축·생략 금지"* (`base-economy-update-inline.md` 결문).
+4. **MCP 응답을 끝까지 처리** — 12 카테고리 응답을 부분만 보고 결론짓지 말 것. `analyze_position(include_base=True)` 결과는 base 3층 + signals + financials + flow + volatility + events + consensus + disclosures + insider 모두 검토 후 본문 작성.
+5. **deterministic 순서 보존** — Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phase 건너뛰기 금지. 단계 내부 BLOCKING 도 표 순서대로 호출.
+
+### 유일 예외
+
+- **사용자 명시 `/stock-daily --fast`** — 이 경우만 일부 BLOCKING 스킵 허용. 어떤 BLOCKING 을 스킵했는지 보고서 최상단 ⚠️ 명시.
+- **기술적 불가** (MCP 서버 다운·외부 API 응답 실패 등) — silent skip 금지. 명시적 에러 메시지 + 어떤 단계가 실패했는지 보고. 가능한 fallback 시도 후에도 실패면 보고 후 사용자 판단 대기.
+
+### 위반 감지 시 동작
+
+- 보고서 최상단 ⚠️ **"환경 무관 실행 의무 위반 — <어느 BLOCKING> 스킵됨"** 명시.
+- 다음 daily 시작 시 누락 항목 재시도 우선 순위.
+- 반복 위반 시 사용자에게 구조적 문제 보고 (skill 자체 결함일 수 있음).
+
+### 외부 API partial fail 정책 (#24, 라운드 2026-05 사후)
+
+외부 API (FRED·ECOS·Finnhub) 의 일부 시리즈 null/error 는 *정상 운영 케이스* — silent skip 도 BLOCKING 위반도 아님. 핵심 시리즈 임계 충족 여부로 BLOCKING 판정:
+
+- `get_macro_indicators_us`: 핵심 4 (DFF/CPIAUCSL/DGS10/VIXCLS) 중 3 OK → BLOCKING 충족
+- `get_macro_indicators_kr`: 핵심 3 (722Y001/901Y009/731Y004) 중 2 OK → BLOCKING 충족
+- `get_yield_curve`: 핵심 4 (3M/2Y/10Y/spread) 중 3 OK → BLOCKING 충족
+- `get_fx_rate`: FRED 실패 시 yfinance fallback 충족 시 BLOCKING 통과 (#22)
+
+핵심 시리즈 미충족이면 진짜 BLOCKING 위반. 비핵심 시리즈 partial fail 은 daily 보고서 본문에 "(FRED partial: VIX/UNRATE 일시 미수집)" 명시.
+
+### 자기 점검
+
+작업 종료 직전 (Phase 7 `save_portfolio_summary` 직후) 자가 audit:
+- BLOCKING 22 호출 카운트 == 22 (또는 `--fast` 명시 스킵 사유)
+- WebSearch BLOCKING 호출 카운트 == (2 + 종목수 + base inline 진입 횟수)
+- 결과 인용 도메인 모두 화이트리스트 (Tier 1~4)
+
+→ Audit 결과 `assets/dependency-audit-template.md` 형식으로 출력.
+
+---
+
+## ⛔ 종목 1건 분석 단일 진입점 (5단계, v6 단순화 + 라운드 2026-05-daily-workflow-tightening)
 
 > 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 5단계 절차를 무조건 따른다**.
 >
 > v6 (2026-05) 단순화: 7단계 → 5단계. base 조회 + WebSearch 의무 단계 폐기. `analyze_position` 이 base 본문 inject + disclosures + insider 통합.
-> WebSearch 는 LLM 자율 — `websearch-rules.md` 가이드 참조.
+> 라운드 2026-05-daily-workflow-tightening: step 1 stale 체크는 **종목 영역 한정** (economy 제외 — Phase 2 책임), step 4 WebSearch 1회 BLOCKING 복원 (도메인 화이트리스트, `references/websearch-domains.md`).
 
 절차 요약 (상세는 `references/per-stock-analysis.md`):
-1. **stale 조회** (`check_base_freshness`)
-2. **stale 갱신** (cascade economy → industry → stock, 발견 시만)
+1. **stale 조회** — `check_base_freshness(scope="stock", code=code)` (economy 제외)
+2. **stale 갱신** — cascade industry → stock (economy 제외, 발견 시만)
 3. **종목 분석** — `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 — base 본문 3층 + disclosures + insider + 정량 raw)
-4. **LLM 종합 판단** (필요시 자율 WebSearch)
+4. **LLM 종합 판단** — WebSearch 1회 BLOCKING ⛔ (Tier 1 글로벌 + Tier 4 KR 종목이면)
 5. **출력 + 저장** (`save_daily_report`, verdict 5종)
 
 모드별 호출 위치:
@@ -150,13 +196,24 @@ base 본문 작성·갱신은 **메인 LLM 이 inline 으로 처리** — multi-
 | industry | 7일 | `references/base-industry-update-inline.md` (입력: name="반도체"\|"us-tech") |
 | stock | 30일 | `references/base-stock-update-inline.md` (입력: code="005930"\|"NVDA") |
 
-### 자동 갱신 정책
+### 자동 갱신 정책 (라운드 2026-05-daily-workflow-tightening — phase별 자기영역 분산)
 
-각 모드 (daily/discover/research) 진입 시:
-1. `check_base_freshness(auto_refresh=True)` MCP 호출 — KR stock_base 데이터는 자동 refresh, 본문 텍스트가 필요한 base 는 `auto_triggers` 반환
-2. `is_stale: true` 인 base 마다 즉시 해당 inline 절차 진입 (위 만기 표 참조)
-3. **cascade 순서**: economy → industry → stock (메인이 순차 처리)
-4. **inline 절차 진입 시 sub-spawn 금지** — 메인이 직접 절차 따름. cascade 의존성도 메인 책임.
+각 모드별 stale 체크는 **자기 영역 한정** (옛 통합 `auto_refresh=True` 폐지 — daily Phase 0 통합 체크 폐기):
+
+| 호출 위치 | scope | 책임 |
+|---|---|---|
+| daily Phase 2 #9 | `scope="economy"` | economy_base 만 검사 |
+| daily Phase 3 step 1 (per-stock) | `scope="stock", code=code` | 그 종목 + 산업만 검사 (economy 제외) |
+| research / discover 진입 | `scope="stock", code=code` (per-stock-analysis 절차) | 동일 |
+| 마무리 자가 검증 | `scope="all"` (선택) | 잔여 stale 0 확인용 |
+
+cascade 순서:
+1. economy stale → daily Phase 2 #18 진입점 (`base-economy-update-inline.md`). per-stock cascade 외부.
+2. industry stale → per-stock step 2 진입점 (`base-industry-update-inline.md`)
+3. stock stale → per-stock step 2 진입점 (`base-stock-update-inline.md`)
+4. **inline 절차 진입 시 sub-spawn 금지** — 메인이 직접 절차 따름.
+
+백엔드 시그니처 (W1 라운드 동일): `check_base_freshness(scope: str = "all", code: str | None = None, auto_refresh: bool = False)`. `scope ∈ {"all","economy","industry","stock"}`, default `"all"` 호환 유지.
 
 ### 결과 검증 (Trust but verify)
 
@@ -263,8 +320,12 @@ inline 절차 완료 후 메인이 즉시:
 **일일 운영** — 보유(Active) + 감시(Pending) 종목 일일 보고서 + 포트폴리오 종합.
 
 핵심:
-- ⛔ BLOCKING 11개 — Phase 0~1 진입 전 필수 (v6 단순화 + WebSearch 자율, 라운드 2026-05)
-- v6 7-Phase Pipeline (Phase 0~7, per-stock 5단계 정합)
+- ⛔ BLOCKING 22개 — Phase 0~3 진입 전 필수 (라운드 2026-05-daily-workflow-tightening)
+- 7-Phase Pipeline (Phase 0~7, per-stock 5단계 정합)
+- Phase 2 매크로 정형 4종 BLOCKING (`get_macro_indicators_us/kr` + `get_yield_curve` + `get_fx_rate`) + WebSearch 2회 BLOCKING (발언 톤 + 지정학)
+- Phase 3 per-stock 마다 WebSearch 1회 BLOCKING (Tier 1 + Tier 4 KR이면)
+- WebSearch 도메인 화이트리스트 BLOCKING (Tier 1~4 — `references/websearch-domains.md`)
+- stale 체크 phase별 자기 영역 분산 — 통합 `auto_refresh=True` 폐지
 - `analyze_position(code, include_base=True)` 1 MCP 로 12 카테고리 묶음 반환 (base 본문 3층 + disclosures + insider + 정량 raw)
 - KR/US 하이브리드 통화별 분리
 
@@ -443,7 +504,7 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `market-routing.md` — KR/US 데이터 소스 분기
 
 **모드별 워크플로우**:
-- `daily-workflow.md` — daily 모드 (BLOCKING 11 + Phase 0~7, v6 단순화)
+- `daily-workflow.md` — daily 모드 (BLOCKING 22 + Phase 0~7, 라운드 2026-05-daily-workflow-tightening)
 - `discover-workflow.md` — discover 모드 (광역 모멘텀 → Top 3~5)
 - `research-workflow.md` — research 모드 (6차원 verdict)
 
@@ -452,7 +513,8 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
-- `websearch-rules.md` — WebSearch 단위별 LLM 자율 가이드 (v7 — BLOCKING 폐지, 종목/economy/industry/stock 단위별 권장 강도 표)
+- `websearch-rules.md` — WebSearch 정책 (v8 — BLOCKING 복원 + 도메인 화이트리스트 + 단계별 매트릭스, 라운드 2026-05-daily-workflow-tightening)
+- `websearch-domains.md` — Tier 1~4 도메인 화이트리스트 단일 출처 (라운드 2026-05-daily-workflow-tightening 신설)
 - `weekly-context-rules.md` — 4가지 활용 룰
 - `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
 
@@ -488,6 +550,14 @@ uv run python -m server.jobs.refresh_base      # 분기별 재무 갱신
 ### scripts/ — 폐지 (MCP 단일 의존)
 
 기존 9개 script (detect_market / concentration_check / fetch_consensus / valuation_call 등) 모두 MCP 도구로 대체됨. 시장 판정·집중도·컨센 fetch·DCF 호출은 LLM 이 MCP 직접 호출 (위 89 툴 인벤토리 참조). multi-step orchestration (discover Pending 등록 등) 도 LLM 이 MCP 시퀀스로 직접 처리.
+
+### 라운드 doc 인덱스 (`docs/rounds/`)
+
+큰 결정의 갈림길·결정 기록. 폐기 항목·재제안 금지·후속 라운드 후보를 담는다.
+
+- `2026-05-stock-daily-overhaul.md` — daily 매트릭스 폐기 + per-stock-analysis 5단계 단순화
+- `2026-05-weekly-review-overhaul.md` — weekly-review 4-Phase + 종목별 회고 + base 역반영
+- `2026-05-daily-workflow-tightening.md` — Phase 2 매크로 BLOCKING + stale 분산 + WebSearch BLOCKING 복원 (본 라운드)
 
 ### assets/ (12 templates)
 

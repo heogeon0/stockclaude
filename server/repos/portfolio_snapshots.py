@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
 from server.db import get_conn
+
+_KST = ZoneInfo("Asia/Seoul")
 
 
 def save(
@@ -167,7 +170,8 @@ def reconcile(user_id: UUID, date: date_cls) -> dict[str, Any]:
         )
         trades = cur.fetchall()
 
-    now = __import__("datetime").datetime.now(tz=__import__("datetime").timezone.utc)
+    # KST 기준 (#13, 2026-05-05) — 다른 모든 timezone 처리(events.py·indicators.py·SQL AT TIME ZONE)와 정합.
+    now = datetime.now(tz=_KST)
     used_trade_ids: set[int] = set()
 
     # 이미 executed 로 기록된 action 의 trade id 선점 (중복 매칭 방지)
@@ -195,9 +199,10 @@ def reconcile(user_id: UUID, date: date_cls) -> dict[str, Any]:
             exp = act.get("expires_at")
             if exp:
                 try:
-                    exp_dt = __import__("datetime").datetime.fromisoformat(exp)
+                    exp_dt = datetime.fromisoformat(exp)
+                    # naive datetime → KST 부착 (#13 — 다른 코드와 일관)
                     if exp_dt.tzinfo is None:
-                        exp_dt = exp_dt.replace(tzinfo=__import__("datetime").timezone.utc)
+                        exp_dt = exp_dt.replace(tzinfo=_KST)
                     if exp_dt < now:
                         act["status"] = "expired"
                         updated += 1
