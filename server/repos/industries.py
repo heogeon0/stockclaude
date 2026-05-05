@@ -26,6 +26,28 @@ def get_industry(code: str) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def list_freshness_for_codes(codes: list[str]) -> dict[str, dict[str, Any]]:
+    """code → {code, name, updated_at, expires_at} dict batch (#26 perf).
+
+    `check_base_freshness` 의 산업 만기 일괄 검사용. 단일 SELECT IN (...)
+    으로 N 산업당 1 query 호출 (이전: get_industry × N).
+
+    빈 codes → 빈 dict.
+    """
+    if not codes:
+        return {}
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT code, name, updated_at, expires_at
+              FROM industries
+             WHERE code = ANY(%s)
+            """,
+            (list(codes),),
+        )
+        return {row["code"]: row for row in cur.fetchall()}
+
+
 def list_by_market(market: str | None = None) -> list[dict[str, Any]]:
     sql = "SELECT code, market, name, parent_code, score FROM industries"
     params: tuple = ()

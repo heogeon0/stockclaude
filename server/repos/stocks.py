@@ -20,6 +20,28 @@ def get_stock(code: str) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def list_for_codes(codes: list[str]) -> dict[str, dict[str, Any]]:
+    """code → row dict batch (#26 perf — N+1 query 제거).
+
+    `check_base_freshness` 의 holdings industry_code lookup 일괄 처리용.
+    단일 SELECT IN (...) 으로 N 종목당 1 query 호출.
+
+    빈 codes → 빈 dict.
+    """
+    if not codes:
+        return {}
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT code, name, market, industry_code, currency, status
+              FROM stocks
+             WHERE code = ANY(%s)
+            """,
+            (list(codes),),
+        )
+        return {row["code"]: row for row in cur.fetchall()}
+
+
 def list_by_market(market: str, status: str = "active") -> list[dict[str, Any]]:
     with get_conn() as conn:
         cur = conn.execute(

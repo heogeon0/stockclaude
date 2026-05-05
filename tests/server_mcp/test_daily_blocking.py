@@ -63,6 +63,22 @@ def _patch_freshness(
         "get_industry",
         lambda ind: (industries_map or {}).get(ind),
     )
+    # #26 batch fetch — holdings 경로에서 호출됨. 단일 mock 들과 동일 데이터 소스에서 dict 도출.
+    sb = stock_bases or {}
+    sm = stock_meta or {}
+    im = industries_map or {}
+    monkeypatch.setattr(
+        mcp_module.stock_base, "list_freshness_for_codes",
+        lambda codes: {c: sb[c] for c in codes if c in sb},
+    )
+    monkeypatch.setattr(
+        mcp_module.stocks, "list_for_codes",
+        lambda codes: {c: sm[c] for c in codes if c in sm},
+    )
+    monkeypatch.setattr(
+        mcp_module.industries, "list_freshness_for_codes",
+        lambda codes: {c: im[c] for c in codes if c in im},
+    )
 
 
 def test_freshness_all_missing_returns_full_keys(monkeypatch):
@@ -428,6 +444,76 @@ def test_check_base_freshness_scope_all_unchanged(monkeypatch):
     # summary all_fresh 동일
     assert out_default["summary"]["all_fresh"] is True
     assert out_all["summary"]["all_fresh"] is True
+
+
+def test_check_base_freshness_holdings_uses_batch_fetch_not_per_call(monkeypatch):
+    """#26 perf: holdings 경로에서 stock_base.get_base / industries.get_industry / stocks.get_stock
+    개별 호출이 일어나지 않아야 함 (batch 함수만 호출). N+1 회귀 가드."""
+    fresh = {"updated_at": datetime.now() - timedelta(days=1)}
+    fresh_ind = {"name": "반도체", "updated_at": datetime.now() - timedelta(days=1)}
+
+    # 5 종목 holdings — batch 가 호출되면 stock_base.get_base 0회.
+    holdings = [
+        {"code": f"00593{i}", "name": f"종목{i}"} for i in range(5)
+    ]
+    stock_bases_map = {f"00593{i}": fresh for i in range(5)}
+    stock_meta_map = {f"00593{i}": {"industry_code": "G45"} for i in range(5)}
+
+    _patch_freshness(
+        monkeypatch,
+        scope=holdings,
+        stock_bases=stock_bases_map,
+        stock_meta=stock_meta_map,
+        industries_map={"G45": fresh_ind},
+    )
+
+    # 호출 카운터 — 개별 함수가 호출되면 카운트 증가
+    per_call_counts: dict = {"stock_base": 0, "industries": 0, "stocks": 0}
+
+    orig_sb_get = mcp_module.stock_base.get_base
+    orig_ind_get = mcp_module.industries.get_industry
+    orig_sk_get = mcp_module.stocks.get_stock
+
+    def _count_sb(code):
+        per_call_counts["stock_base"] += 1
+        return orig_sb_get(code)
+
+    def _count_ind(code):
+        per_call_counts["industries"] += 1
+        return orig_ind_get(code)
+
+    def _count_sk(code):
+        per_call_counts["stocks"] += 1
+        return orig_sk_get(code)
+
+    monkeypatch.setattr(mcp_module.stock_base, "get_base", _count_sb)
+    monkeypatch.setattr(mcp_module.industries, "get_industry", _count_ind)
+    monkeypatch.setattr(mcp_module.stocks, "get_stock", _count_sk)
+
+    out = mcp_module.check_base_freshness(scope="all")
+
+    # 5 holdings × dedup 1 industry — batch 경로면 per-call 카운트 0
+    assert per_call_counts["stock_base"] == 0, "stock_base.get_base N+1 (batch 미사용)"
+    assert per_call_counts["industries"] == 0, "industries.get_industry N+1 (batch 미사용)"
+    assert per_call_counts["stocks"] == 0, "stocks.get_stock N+1 (batch 미사용)"
+    # 결과 정확성 — 5 종목 + 1 industry
+    assert len(out["stocks"]) == 5
+    assert len(out["industries"]) == 1
+
+
+def test_check_base_freshness_single_stock_path_still_uses_per_call(monkeypatch):
+    """단일 종목 경로 (scope='stock', code) 는 batch 가 아닌 per-call 경로 — 3 queries OK."""
+    fresh = {"updated_at": datetime.now() - timedelta(days=1)}
+    _patch_freshness(
+        monkeypatch,
+        stock_bases={"005930": fresh},
+        stock_meta={"005930": {"industry_code": "G45"}},
+        industries_map={"G45": {"name": "반도체", "updated_at": datetime.now() - timedelta(days=1)}},
+    )
+
+    out = mcp_module.check_base_freshness(scope="stock", code="005930")
+    assert len(out["stocks"]) == 1
+    assert len(out["industries"]) == 1
 
 
 def test_check_base_freshness_invalid_scope_raises(monkeypatch):

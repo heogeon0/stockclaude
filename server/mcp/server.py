@@ -2491,11 +2491,12 @@ def check_base_freshness(
     # 2) industries / stocks — scope 에 따라 holdings 또는 단일 code 분기
     seen_inds: set[str] = set()
 
-    def _append_industry(ind_code: str | None) -> None:
+    def _append_industry(ind_code: str | None, ind_row: dict | None = None) -> None:
+        """ind_row 가 주어지면 추가 query 없이 사용 (#26 perf — batch 경로)."""
         if not ind_code or ind_code in seen_inds:
             return
         seen_inds.add(ind_code)
-        ib = industries.get_industry(ind_code)
+        ib = ind_row if ind_row is not None else industries.get_industry(ind_code)
         if not ib:
             out["industries"].append({
                 "code": ind_code, "name": ind_code,
@@ -2513,9 +2514,10 @@ def check_base_freshness(
                 "trigger": f"/base-industry {ind_code}" if is_stale else None,
             })
 
-    def _append_stock(p_code: str, p_name: str | None) -> None:
+    def _append_stock(p_code: str, p_name: str | None, sb_row: dict | None = None) -> None:
+        """sb_row 가 주어지면 추가 query 없이 사용 (#26 perf — batch 경로)."""
         name = p_name or p_code
-        sb = stock_base.get_base(p_code)
+        sb = sb_row if sb_row is not None else stock_base.get_base(p_code)
         if not sb:
             out["stocks"].append({
                 "code": p_code, "name": name, "age_days": None,
@@ -2534,7 +2536,7 @@ def check_base_freshness(
             })
 
     if scope == "stock" and code:
-        # 단일 종목 + 그 종목의 산업 1건만
+        # 단일 종목 + 그 종목의 산업 1건만 (3 queries OK — small)
         s_row = stocks.get_stock(code)
         name = (s_row.get("name") if s_row else None) or code
         _append_stock(code, name)
@@ -2544,17 +2546,38 @@ def check_base_freshness(
         # 단일 산업만
         _append_industry(code)
     elif do_industry or do_stock:
-        # holdings 전체 대상 — scope ∈ {"all", "industry", "stock"} & code 미지정
+        # holdings 전체 대상 — #26 perf: N+1 → 3 batch queries 로 축소.
+        # 이전: positions(1) + stocks.get_stock×N + stock_base.get_base×N + industries.get_industry×M
+        # 현재: positions(1) + stocks.list_for_codes(1) + stock_base.list_freshness_for_codes(1)
+        #       + industries.list_freshness_for_codes(1) = **4 queries**.
         scope_positions = positions.list_daily_scope(uid)
+        holding_codes = [p["code"] for p in scope_positions]
+
+        # Batch fetch — 빈 holdings 면 빈 dict 반환 (no-op)
+        stocks_map = stocks.list_for_codes(holding_codes) if (do_industry and holding_codes) else {}
+        sb_map = (
+            stock_base.list_freshness_for_codes(holding_codes)
+            if (do_stock and holding_codes) else {}
+        )
+        ind_codes_needed: list[str] = []
+        if do_industry:
+            ind_codes_needed = list({
+                s.get("industry_code") for s in stocks_map.values() if s.get("industry_code")
+            })
+        ind_map = (
+            industries.list_freshness_for_codes(ind_codes_needed)
+            if ind_codes_needed else {}
+        )
+
         for p in scope_positions:
             p_code = p["code"]
             p_name = p.get("name") or p_code
             if do_stock:
-                _append_stock(p_code, p_name)
+                _append_stock(p_code, p_name, sb_row=sb_map.get(p_code))
             if do_industry:
-                s_row = stocks.get_stock(p_code)
-                ind_code = s_row.get("industry_code") if s_row else None
-                _append_industry(ind_code)
+                s_row = stocks_map.get(p_code) or {}
+                ind_code = s_row.get("industry_code")
+                _append_industry(ind_code, ind_row=ind_map.get(ind_code) if ind_code else None)
 
     # 3) Summary
     all_items = out["economy"] + out["industries"] + out["stocks"]
