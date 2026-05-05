@@ -10,6 +10,8 @@
 
 `/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~3 진입 전에 아래 22 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ BLOCKING 위반 — 반쪽 daily** 명시 (daily 자체는 중단하지 않음 — 사용자 판단에 맡김).
 
+> **환경 무관 실행 의무** (`SKILL.md` ⛔ 섹션) — 모바일·Desktop·iOS Custom Connector 어떤 환경에서도 BLOCKING 22 전부 호출. 토큰·시간·환경을 이유로 임의 스킵·축약·우회 금지. 유일 예외는 사용자 명시 `/stock-daily --fast` 또는 기술적 불가 (silent skip 절대 금지, 명시적 에러 보고).
+
 | # | Phase | 체크 항목 | 호출 |
 |---|---|---|---|
 | 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외). base 체크 X (각 phase 가 자기 영역 책임) |

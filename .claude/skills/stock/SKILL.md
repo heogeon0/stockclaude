@@ -55,6 +55,41 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 
 ---
 
+## ⛔ 환경 무관 실행 의무 (라운드 2026-05-daily-workflow-tightening)
+
+> **모바일 / Desktop / iOS Custom Connector 어떤 환경에서도 동일 워크플로우를 끝까지 수행한다.**
+> 토큰·시간·환경을 이유로 BLOCKING 단계를 임의 스킵·축약·우회하지 않는다.
+
+### 강제 룰
+
+1. **BLOCKING 22개 전부 실행** — `references/daily-workflow.md` 의 BLOCKING 표 22행을 환경 무관 모두 호출. "모바일이라 토큰 부담"·"세션 길어진다"·"빠르게 끝내자" 등은 스킵 사유 X.
+2. **WebSearch BLOCKING 전부 실행** — Phase 2 economy 2회 + Phase 3 per-stock 1회/종목 + base inline 절차의 BLOCKING (`references/websearch-rules.md` v8 매트릭스). 도메인 화이트리스트 (`references/websearch-domains.md`) 준수.
+3. **base inline 절차 풀 수행** — `base-{economy,industry,stock}-update-inline.md` 의 단계·체크리스트·완료 검증 모두. *"섹션 압축·생략 금지"* (`base-economy-update-inline.md` 결문).
+4. **MCP 응답을 끝까지 처리** — 12 카테고리 응답을 부분만 보고 결론짓지 말 것. `analyze_position(include_base=True)` 결과는 base 3층 + signals + financials + flow + volatility + events + consensus + disclosures + insider 모두 검토 후 본문 작성.
+5. **deterministic 순서 보존** — Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phase 건너뛰기 금지. 단계 내부 BLOCKING 도 표 순서대로 호출.
+
+### 유일 예외
+
+- **사용자 명시 `/stock-daily --fast`** — 이 경우만 일부 BLOCKING 스킵 허용. 어떤 BLOCKING 을 스킵했는지 보고서 최상단 ⚠️ 명시.
+- **기술적 불가** (MCP 서버 다운·외부 API 응답 실패 등) — silent skip 금지. 명시적 에러 메시지 + 어떤 단계가 실패했는지 보고. 가능한 fallback 시도 후에도 실패면 보고 후 사용자 판단 대기.
+
+### 위반 감지 시 동작
+
+- 보고서 최상단 ⚠️ **"환경 무관 실행 의무 위반 — <어느 BLOCKING> 스킵됨"** 명시.
+- 다음 daily 시작 시 누락 항목 재시도 우선 순위.
+- 반복 위반 시 사용자에게 구조적 문제 보고 (skill 자체 결함일 수 있음).
+
+### 자기 점검
+
+작업 종료 직전 (Phase 7 `save_portfolio_summary` 직후) 자가 audit:
+- BLOCKING 22 호출 카운트 == 22 (또는 `--fast` 명시 스킵 사유)
+- WebSearch BLOCKING 호출 카운트 == (2 + 종목수 + base inline 진입 횟수)
+- 결과 인용 도메인 모두 화이트리스트 (Tier 1~4)
+
+→ Audit 결과 `assets/dependency-audit-template.md` 형식으로 출력.
+
+---
+
 ## ⛔ 종목 1건 분석 단일 진입점 (5단계, v6 단순화 + 라운드 2026-05-daily-workflow-tightening)
 
 > 종목 1건 분석은 모드 (daily / research / discover) 와 무관하게 **`references/per-stock-analysis.md` 의 5단계 절차를 무조건 따른다**.
