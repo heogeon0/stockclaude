@@ -66,6 +66,61 @@
 - 스킬 설치: `bash scripts/install-claude-skill.sh` → `~/.claude/skills/stock` 심링크
 - 프론트: `cd web && npm run dev`
 
+## 배포 환경 (Railway)
+
+### 서비스 구성
+
+Railway 에 **서비스 2개 (혹은 그 이상)** 가 동일 레포 빌드 공유:
+- **API 서비스** — FastAPI (web 대시보드 backend 용, Vercel 이 호출). `uv run uvicorn server.main:app --host 0.0.0.0 --port $PORT`.
+- **MCP 서비스** — FastMCP (Claude.ai Custom Connector 가 호출). `uv run python -m server.mcp.server` + `STOCK_MCP_TRANSPORT=streamable-http` env.
+
+각 서비스의 `startCommand` 는 **Railway 대시보드 — Service Settings — Custom Start Command** 에 저장된다. `railway.json` 에는 박지 않는다 (박으면 모든 서비스에 일괄 적용 → MCP 가 FastAPI 로 덮어씌워짐).
+
+### 빌드 파이프라인 (`railway.json` + `nixpacks.toml` + `Procfile`)
+
+```
+1. Build (Docker image, server/* 빌드)
+   - railway.json: builder=NIXPACKS  ← Railway 가 default 를 railpack 로 전환했으므로 명시 필수.
+   - nixpacks.toml: aptPkgs=[postgresql-client], [phases.install] cmds 명시.
+     · `pip install 'uv==0.11.7'` 직접 박음 — NIXPACKS_UV_VERSION env 가 자동 주입 안 되어
+       기본 명령이 `pip install uv==` (빈 specifier) 로 깨짐 → install phase 전체 override 필수.
+2. Pre-deploy (build 후, deploy 전 — DB 도달 가능한 시점)
+   - railway.json: preDeployCommand="bash scripts/run_migrations.sh"
+   - 마이그레이션은 `schema_migrations` 테이블 추적 → idempotent. 여러 서비스에서 실행돼도 안전.
+3. Start (서비스별 분기)
+   - 각 서비스의 dashboard Custom Start Command. railway.json 에 박지 X.
+```
+
+### 재제안 금지 (deploy 회귀 위험)
+
+다음을 다시 추가하지 말 것:
+- ❌ `railway.json` 에 `deploy.startCommand` — 모든 서비스에 일괄 적용되어 MCP 서비스 깨짐 (이번 라운드 사례).
+- ❌ `Procfile` 에 `release: bash scripts/run_migrations.sh` — nixpacks 가 build phase 의 `RUN` 으로 변환 → DB 미도달 시점 실행 → `postgres.railway.internal` DNS 실패 (이번 라운드 사례).
+- ❌ `[variables] NIXPACKS_UV_VERSION="..."` 만으로 우회 시도 — install phase 까지 전파 안 됨 (이번 라운드 확인). `[phases.install]` cmds 직접 override 가 안전.
+
+### 검증 방법
+
+배포 완료 후 (5~10분):
+```bash
+# MCP 서비스 응답 확인 (Railway 가 발급한 public URL)
+curl -i https://<mcp-service>.up.railway.app/.well-known/oauth-protected-resource
+# → 200 OK + JSON 이면 정상 (404 면 startCommand 가 FastAPI 로 잘못 시작된 것)
+
+# API 서비스 응답 확인
+curl -i https://<api-service>.up.railway.app/health
+# → {"status":"ok","env":"production"}
+```
+
+### 환경변수 (서비스별 분리 권장)
+
+`.env.example` 의 키들을 Railway Dashboard → Variables 에 등록. 일부는 서비스별 다름:
+- API 서비스: `DATABASE_URL`, `GOOGLE_CLIENT_ID/SECRET`, `ALLOWED_EMAILS`, `ALLOWED_ORIGINS`, `STOCK_USER_ID`
+- MCP 서비스: 위 + `STOCK_MCP_TRANSPORT=streamable-http`, `MCP_BASE_URL=<public URL>`, 외부 API 키들 (`KIS_*`, `DART_API_KEY`, `FRED_API_KEY`, `FINNHUB_API_KEY`, `KRX_API_KEY`, `ECOS_API_KEY`, `SEC_EDGAR_USER_AGENT`).
+
+⚠️ Build 로그에 `SecretsUsedInArgOrEnv` 워닝 다수 발생 — Railway 가 env 를 ARG/ENV 로 주입해 Docker BuildKit linter 가 경고. **사설 image 라 실 노출 X** (Public Docker Hub 등에 push 시만 위험). 무시 가능. 영구 fix 는 Railway 측 BuildKit `--secret` 마운트 도입 필요.
+
+---
+
 ## agent/ 워크플로우
 
 `research → plan → modifier → action` 4단계 (글로벌 `~/.claude/CLAUDE.md`). `agent/research.md`·`agent/plan.md`는 **in-flight 작업 산출물**이라 `.gitignore` 유지 — PR에 올라가지 않는다. 의도된 정책 ((agent/ gitignore 의도) 확인됨), 변경 금지.
