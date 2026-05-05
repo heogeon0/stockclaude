@@ -2367,14 +2367,31 @@ def refresh_us_consensus(codes: list[str] | None = None) -> dict:
 
 
 @mcp.tool
-def check_base_freshness(auto_refresh: bool = False) -> dict:
+def check_base_freshness(
+    scope: str = "all",
+    code: str | None = None,
+    auto_refresh: bool = False,
+) -> dict:
     """
     Active + Pending 포지션 종목의 base 만기 일괄 판정. LLM이 자연어 비교로 누락하지 않도록
     `is_stale: bool` + `auto_triggers: list[str]` 강제 반환.
 
     인자:
+      scope: 체크 범위 분기. 기본 "all" (기존 호환).
+        - "all"      : economy + industries + stocks 모두 (기존 동작)
+        - "economy"  : economy KR/US 만 (industries/stocks 빈 리스트)
+        - "industry" : industry 만. code 지정 시 해당 1건, 미지정 시 holdings 산업 전체.
+        - "stock"    : stock 만. code 지정 시 해당 종목 1건 + 그 종목의 industry_code 1건.
+                       code 미지정 시 holdings 종목 전체 + 산업 dedup.
+      code: scope ∈ {"industry", "stock"} 일 때만 의미. None이면 holdings 전체 대상.
       auto_refresh: True 시 stale 한 stock_base 를 즉시 refresh_stock_base() 자동 실행.
                     economy / industry 는 텍스트 작성 필요 → auto_triggers 만 반환 (수동 skill 호출).
+
+    호출 예시:
+      Phase 2 economy 단독:    check_base_freshness(scope="economy")
+      Phase 3 per-stock 단독:  check_base_freshness(scope="stock", code="005930")
+      특정 산업 단독:          check_base_freshness(scope="industry", code="G45")
+      기존 통합 (default):     check_base_freshness()
 
     만기 기준 (references/expiration-rules.md):
       - economy/base.md (kr/us)        : 1일
@@ -2395,8 +2412,15 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
             "results": {ok, fail, ...},
         }
       }
+      scope 가 "all" 외이면 해당 범위 외 키는 빈 리스트(`[]`)로 유지 (LLM 일관성).
     """
     from datetime import date as _date
+
+    valid_scopes = {"all", "economy", "industry", "stock"}
+    if scope not in valid_scopes:
+        raise ValueError(
+            f"invalid scope={scope!r} — must be one of {sorted(valid_scopes)}"
+        )
 
     uid = settings.stock_user_id
     today = _date.today()
@@ -2415,58 +2439,38 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
     EXP_INDUSTRY = 7
     EXP_STOCK = 30
 
-    # 1) economy bases
-    for market in ("kr", "us"):
-        row = economy.get_base(market)
-        if not row:
-            out["economy"].append({
-                "market": market, "age_days": None,
-                "expiry_days": EXP_ECONOMY,
-                "is_stale": True, "missing": True,
-                "trigger": f"/base-economy --{market}",
-            })
-            continue
-        age = _age(row.get("updated_at"))
-        is_stale = (age is None) or age >= EXP_ECONOMY
-        out["economy"].append({
-            "market": market, "age_days": age,
-            "expiry_days": EXP_ECONOMY,
-            "is_stale": is_stale, "missing": False,
-            "trigger": f"/base-economy --{market}" if is_stale else None,
-        })
+    do_economy = scope in ("all", "economy")
+    do_industry = scope in ("all", "industry")
+    do_stock = scope in ("all", "stock")
 
-    # 2) Daily-scope positions (Active + Pending) → stocks + industries
-    scope = positions.list_daily_scope(uid)
+    # 1) economy bases — scope ∈ {"all", "economy"}
+    if do_economy:
+        for market in ("kr", "us"):
+            row = economy.get_base(market)
+            if not row:
+                out["economy"].append({
+                    "market": market, "age_days": None,
+                    "expiry_days": EXP_ECONOMY,
+                    "is_stale": True, "missing": True,
+                    "trigger": f"/base-economy --{market}",
+                })
+                continue
+            age = _age(row.get("updated_at"))
+            is_stale = (age is None) or age >= EXP_ECONOMY
+            out["economy"].append({
+                "market": market, "age_days": age,
+                "expiry_days": EXP_ECONOMY,
+                "is_stale": is_stale, "missing": False,
+                "trigger": f"/base-economy --{market}" if is_stale else None,
+            })
+
+    # 2) industries / stocks — scope 에 따라 holdings 또는 단일 code 분기
     seen_inds: set[str] = set()
 
-    for p in scope:
-        code = p["code"]
-        name = p.get("name") or code
-
-        sb = stock_base.get_base(code)
-        if not sb:
-            out["stocks"].append({
-                "code": code, "name": name, "age_days": None,
-                "expiry_days": EXP_STOCK,
-                "is_stale": True, "missing": True,
-                "trigger": f"/base-stock {name}",
-            })
-        else:
-            age = _age(sb.get("updated_at"))
-            is_stale = (age is None) or age >= EXP_STOCK
-            out["stocks"].append({
-                "code": code, "name": name, "age_days": age,
-                "expiry_days": EXP_STOCK,
-                "is_stale": is_stale, "missing": False,
-                "trigger": f"/base-stock {name}" if is_stale else None,
-            })
-
-        s_row = stocks.get_stock(code)
-        ind_code = s_row.get("industry_code") if s_row else None
+    def _append_industry(ind_code: str | None) -> None:
         if not ind_code or ind_code in seen_inds:
-            continue
+            return
         seen_inds.add(ind_code)
-
         ib = industries.get_industry(ind_code)
         if not ib:
             out["industries"].append({
@@ -2484,6 +2488,49 @@ def check_base_freshness(auto_refresh: bool = False) -> dict:
                 "is_stale": is_stale, "missing": False,
                 "trigger": f"/base-industry {ind_code}" if is_stale else None,
             })
+
+    def _append_stock(p_code: str, p_name: str | None) -> None:
+        name = p_name or p_code
+        sb = stock_base.get_base(p_code)
+        if not sb:
+            out["stocks"].append({
+                "code": p_code, "name": name, "age_days": None,
+                "expiry_days": EXP_STOCK,
+                "is_stale": True, "missing": True,
+                "trigger": f"/base-stock {name}",
+            })
+        else:
+            age = _age(sb.get("updated_at"))
+            is_stale = (age is None) or age >= EXP_STOCK
+            out["stocks"].append({
+                "code": p_code, "name": name, "age_days": age,
+                "expiry_days": EXP_STOCK,
+                "is_stale": is_stale, "missing": False,
+                "trigger": f"/base-stock {name}" if is_stale else None,
+            })
+
+    if scope == "stock" and code:
+        # 단일 종목 + 그 종목의 산업 1건만
+        s_row = stocks.get_stock(code)
+        name = (s_row.get("name") if s_row else None) or code
+        _append_stock(code, name)
+        ind_code = s_row.get("industry_code") if s_row else None
+        _append_industry(ind_code)
+    elif scope == "industry" and code:
+        # 단일 산업만
+        _append_industry(code)
+    elif do_industry or do_stock:
+        # holdings 전체 대상 — scope ∈ {"all", "industry", "stock"} & code 미지정
+        scope_positions = positions.list_daily_scope(uid)
+        for p in scope_positions:
+            p_code = p["code"]
+            p_name = p.get("name") or p_code
+            if do_stock:
+                _append_stock(p_code, p_name)
+            if do_industry:
+                s_row = stocks.get_stock(p_code)
+                ind_code = s_row.get("industry_code") if s_row else None
+                _append_industry(ind_code)
 
     # 3) Summary
     all_items = out["economy"] + out["industries"] + out["stocks"]

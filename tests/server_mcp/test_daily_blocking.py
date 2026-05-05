@@ -284,6 +284,159 @@ def test_freshness_today_iso_format(monkeypatch):
     assert isinstance(out["today"], str)
 
 
+# ----------------------------------------------------------------------------
+# scope 분기 (Phase 2 economy / Phase 3 per-stock) — v1 신규
+# ----------------------------------------------------------------------------
+
+
+def test_check_base_freshness_scope_economy_only(monkeypatch):
+    """scope='economy' → economy 만 채움. industries/stocks 는 빈 리스트.
+
+    holdings 종목이 있어도 industry / stock 영역은 건드리지 않음 → list_daily_scope 호출 X.
+    """
+    today = date_cls.today()
+    fresh = {"updated_at": datetime(today.year, today.month, today.day)}
+    # holdings 가 있어도 무시되어야 함
+    scope_positions = [{"code": "005930", "name": "삼성전자"}]
+    _patch_freshness(
+        monkeypatch,
+        economy_kr=fresh,
+        economy_us=fresh,
+        scope=scope_positions,
+        stock_bases={"005930": fresh},
+        stock_meta={"005930": {"industry_code": "G45", "market": "kr"}},
+        industries_map={"G45": {"name": "반도체", "updated_at": fresh["updated_at"]}},
+    )
+    out = mcp_module.check_base_freshness(scope="economy")
+    # economy 는 KR/US 둘 다 fresh
+    assert len(out["economy"]) == 2
+    markets = {e["market"] for e in out["economy"]}
+    assert markets == {"kr", "us"}
+    for e in out["economy"]:
+        assert e["is_stale"] is False
+    # 다른 영역은 빈 리스트 보존 (LLM 일관성)
+    assert out["industries"] == []
+    assert out["stocks"] == []
+    # summary 는 economy 범위 내 결과만 집계 → all_fresh
+    assert out["summary"]["all_fresh"] is True
+    assert out["summary"]["total_stale"] == 0
+
+
+def test_check_base_freshness_scope_stock_with_code(monkeypatch):
+    """scope='stock', code='005930' → 해당 종목 1건 + 그 종목의 industry 1건.
+
+    holdings 의 다른 종목은 무시. economy 는 빈 리스트.
+    """
+    today = date_cls.today()
+    five_days_ago = today - timedelta(days=5)
+    fresh_sb = {
+        "updated_at": datetime(five_days_ago.year, five_days_ago.month, five_days_ago.day)
+    }
+    fresh_ind = {
+        "name": "반도체",
+        "updated_at": datetime(today.year, today.month, today.day),
+    }
+    _patch_freshness(
+        monkeypatch,
+        # economy 는 호출되지 않아야 함 → 모킹 자체는 둬도 무방
+        economy_kr=None,
+        economy_us=None,
+        # holdings 는 다른 종목 — code 인자가 우선해야 함
+        scope=[{"code": "000660", "name": "SK하이닉스"}],
+        stock_bases={"005930": fresh_sb, "000660": fresh_sb},
+        stock_meta={
+            "005930": {"name": "삼성전자", "industry_code": "G45", "market": "kr"},
+            "000660": {"name": "SK하이닉스", "industry_code": "G99", "market": "kr"},
+        },
+        industries_map={"G45": fresh_ind, "G99": fresh_ind},
+    )
+    out = mcp_module.check_base_freshness(scope="stock", code="005930")
+    # economy 는 빈 리스트
+    assert out["economy"] == []
+    # 종목 1건 — code='005930' 만
+    assert len(out["stocks"]) == 1
+    assert out["stocks"][0]["code"] == "005930"
+    assert out["stocks"][0]["age_days"] == 5
+    assert out["stocks"][0]["is_stale"] is False
+    # industry 1건 — '005930' 의 industry_code='G45' 만
+    assert len(out["industries"]) == 1
+    assert out["industries"][0]["code"] == "G45"
+    assert out["industries"][0]["is_stale"] is False
+    # summary
+    assert out["summary"]["all_fresh"] is True
+
+
+def test_check_base_freshness_scope_industry_with_code(monkeypatch):
+    """scope='industry', code='G45' → 그 산업 1건만. economy/stocks 빈 리스트."""
+    today = date_cls.today()
+    fresh_ind = {
+        "name": "반도체",
+        "updated_at": datetime(today.year, today.month, today.day),
+    }
+    _patch_freshness(
+        monkeypatch,
+        industries_map={"G45": fresh_ind},
+    )
+    out = mcp_module.check_base_freshness(scope="industry", code="G45")
+    assert out["economy"] == []
+    assert out["stocks"] == []
+    assert len(out["industries"]) == 1
+    ind = out["industries"][0]
+    assert ind["code"] == "G45"
+    assert ind["name"] == "반도체"
+    assert ind["is_stale"] is False
+    assert ind["expiry_days"] == 7  # EXP_INDUSTRY
+
+
+def test_check_base_freshness_scope_all_unchanged(monkeypatch):
+    """scope='all' default 회귀 가드 — 기존 통합 동작과 동일.
+
+    인자 없이 호출한 결과와 scope='all' 명시 호출이 동일 shape/내용.
+    """
+    today = date_cls.today()
+    fresh = {"updated_at": datetime(today.year, today.month, today.day)}
+    scope_positions = [{"code": "005930", "name": "삼성전자"}]
+    stock_meta = {"005930": {"industry_code": "G45", "market": "kr"}}
+    industries_map = {"G45": {"name": "반도체", "updated_at": fresh["updated_at"]}}
+
+    _patch_freshness(
+        monkeypatch,
+        economy_kr=fresh,
+        economy_us=fresh,
+        scope=scope_positions,
+        stock_bases={"005930": fresh},
+        stock_meta=stock_meta,
+        industries_map=industries_map,
+    )
+    out_default = mcp_module.check_base_freshness()
+
+    _patch_freshness(
+        monkeypatch,
+        economy_kr=fresh,
+        economy_us=fresh,
+        scope=scope_positions,
+        stock_bases={"005930": fresh},
+        stock_meta=stock_meta,
+        industries_map=industries_map,
+    )
+    out_all = mcp_module.check_base_freshness(scope="all")
+
+    # 같은 shape — economy 2건 + industries 1건 + stocks 1건
+    assert len(out_default["economy"]) == 2 == len(out_all["economy"])
+    assert len(out_default["industries"]) == 1 == len(out_all["industries"])
+    assert len(out_default["stocks"]) == 1 == len(out_all["stocks"])
+    # summary all_fresh 동일
+    assert out_default["summary"]["all_fresh"] is True
+    assert out_all["summary"]["all_fresh"] is True
+
+
+def test_check_base_freshness_invalid_scope_raises(monkeypatch):
+    """scope='invalid' → ValueError (silent fail X)."""
+    _patch_freshness(monkeypatch)
+    with pytest.raises(ValueError):
+        mcp_module.check_base_freshness(scope="invalid")
+
+
 # ============================================================================
 # get_pending_base_revisions
 # ============================================================================

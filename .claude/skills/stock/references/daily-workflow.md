@@ -1,37 +1,55 @@
 # Daily Workflow — 일일 운영 절차
 
 > stock skill 의 daily 모드 진입 시 따라야 할 워크플로우.
-> v6 7-Phase Pipeline (per-stock 5단계 정합) + BLOCKING 11 + 종목별 묶음 분석 + 매매 룰.
+> 라운드 2026-05-daily-workflow-tightening: Phase 0 통합 stale 체크 폐지 → phase별 자기영역 분산 + 매크로 정형 4종 BLOCKING + WebSearch BLOCKING 복원.
 > SKILL.md 본문은 호출 정책만 명시, 상세 절차는 이 파일에 분리.
 
 ---
 
-## ⛔ BLOCKING — 시작 전 11개 체크 (v6 단순화 + WebSearch 자율 + base revision 큐)
+## ⛔ BLOCKING — 시작 전 22개 체크 (라운드 2026-05-daily-workflow-tightening)
 
-`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~1 진입 전에 아래 11 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ 반쪽 daily** 명시.
+`/stock-daily` (특히 portfolio 모드) 진입 시 반드시 Phase 0~3 진입 전에 아래 22 항목 다 호출. 하나라도 스킵하면 결과 최상단에 **⚠️ BLOCKING 위반 — 반쪽 daily** 명시 (daily 자체는 중단하지 않음 — 사용자 판단에 맡김).
 
 | # | Phase | 체크 항목 | 호출 |
 |---|---|---|---|
-| 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외) |
-| 2 | 0 | **base 만기 + 자동 갱신** ⭐ ⛔ 강제 | `check_base_freshness(auto_refresh=True)` — stale 발견 시 즉시 메인 inline 절차 실행 (`references/base-*-update-inline.md`). 자율 스킵 금지 |
-| 3 | 1 | 어제 pending 액션 로드 | `get_portfolio_summary(yesterday)` |
-| 4 | 1 | 어제 trades 매칭 | `reconcile_actions(yesterday)` |
-| 5 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` |
-| 6 | 1 | **오늘 trades 매칭** ⭐ | `reconcile_actions(today)` |
-| 7 | 1 | 주간 회고 컨텍스트 | `get_weekly_context(weeks=4)` |
-| 8 | 2 | 시장 국면 판정 + 매크로 정형 | `detect_market_regime()` + (선택) `get_macro_indicators_us` / `get_macro_indicators_kr` / `get_economic_calendar` |
-| 9 | 3 | **종목별 per-stock-analysis 5단계** ⭐ | `references/per-stock-analysis.md` 절차를 #1 결과의 `all_codes` 전부 1회 따라감 — `analyze_position(code, include_base=True)` 1 MCP 로 base + 12 카테고리 통합 |
-| 10 | 1 | **월요일 weekly_strategy 점검** (v8) | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. carry_over=True 면 보고서 최상단에 표기 |
-| 11 | 1 | **base 미처리 narrative revision 큐 점검** (라운드 2026-05) | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 daily 보고서 **최상단 ⚠️ 알림 강제** ("미처리 base narrative revision N건 누적, `/base-stock {code}` 또는 `/base-industry` 처리 권장"). 회고 Phase 3 에서 적재된 사용자 큐 (contradictory + base_refresh_required 케이스) 가 daily 까지 누적되지 않도록 강제 |
+| 1 | 0 | **daily 스코프 일괄 로드** ⭐ | `list_daily_positions()` — Active + Pending 모두 (Close 제외). base 체크 X (각 phase 가 자기 영역 책임) |
+| 2 | 1 | 어제 pending 액션 로드 | `get_portfolio_summary(yesterday)` |
+| 3 | 1 | 어제 trades 매칭 | `reconcile_actions(yesterday)` |
+| 4 | 1 | **오늘 trades 조회** ⭐ | `list_trades(limit=20)` |
+| 5 | 1 | **오늘 trades 매칭** ⭐ | `reconcile_actions(today)` |
+| 6 | 1 | 주간 회고 컨텍스트 | `get_weekly_context(weeks=4)` |
+| 7 | 1 | **월요일 weekly_strategy 점검** | `get_weekly_strategy()` — 이번 주 미작성 + 월요일 발견 시 ⚠️ "weekly-strategy 미작성, carry-over 사용 중" 알림. carry_over=True 면 보고서 최상단 표기 |
+| 8 | 1 | **base 미처리 narrative revision 큐** | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 보고서 최상단 ⚠️ 알림 |
+| 9 | 2 | **economy stale 자기 체크** ⭐ ⛔ | `check_base_freshness(scope="economy")` — economy_base 만 검사 (industries/stocks 제외) |
+| 10 | 2 | 시장 국면 판정 | `detect_market_regime()` |
+| 11 | 2 | **매크로 정형 — US** ⭐ ⛔ | `get_macro_indicators_us()` (DFF/CPI/UNRATE/DGS10/SP500 등) |
+| 12 | 2 | **매크로 정형 — KR** ⭐ ⛔ | `get_macro_indicators_kr()` (기준금리/CPI/M2/경상수지 등 8 default) |
+| 13 | 2 | **수익률 곡선** ⭐ ⛔ | `get_yield_curve()` (UST 3M~30Y + 10Y_3M_spread + 역전 여부) |
+| 14 | 2 | **환율** ⭐ ⛔ | `get_fx_rate("DEXKOUS")` (1일 TTL) |
+| 15 | 2 | (선택) 경제 캘린더 | `get_economic_calendar(days=7)` — Finnhub. 누락 허용 (BLOCKING 외) |
+| 16 | 2 | **WebSearch — 발언 톤** ⭐ ⛔ | 1회 BLOCKING — Tier 1 (Bloomberg/Reuters) + Tier 2 (Fed/BOK 공식). FOMC/금통위·CPI·연설 톤 추적 |
+| 17 | 2 | **WebSearch — 지정학** ⭐ ⛔ | 1회 BLOCKING — Tier 1 (Bloomberg/Reuters/FT/WSJ). 중동·미중·우크라·제재 |
+| 18 | 2 | **economy stale → inline** ⛔ | #9 결과 `is_stale=true` 면 `references/base-economy-update-inline.md` 진입 → economy_base 갱신 |
+| 19 | 3 | **per-stock-analysis 5단계** ⭐ ⛔ | 종목마다 `references/per-stock-analysis.md` 절차. step 1 = `check_base_freshness(scope="stock", code=code)` 자기 영역 체크 |
+| 20 | 3 | **per-stock cascade — industry → stock** ⭐ ⛔ | step 2 cascade — economy 제외 (Phase 2 가 처리). industry stale → stock stale 만 |
+| 21 | 3 | **per-stock WebSearch** ⭐ ⛔ | step 4 LLM 종합 판단 시 WebSearch 1회/종목 BLOCKING — Tier 1 (Bloomberg/Reuters/FT/WSJ) + KR 종목이면 Tier 4 (한경/매경) 추가 |
+| 22 | 7 | **save_daily_report + save_portfolio_summary** ⛔ | DB read-back 의무 (Phase 7 종료 체크리스트 — 본 파일 하단) |
 
-**⭐ WebSearch 정책 (v7, 2026-05)**: BLOCKING 폐지. 매크로 / per-stock 모두 LLM 자율 호출 (`websearch-rules.md` 권장 가이드). 강제 횟수·캐시 룰 X.
+**⭐ 변경 사실 (라운드 2026-05-daily-workflow-tightening)**:
+- 옛 BLOCKING #2 통합 stale 체크 (`check_base_freshness(auto_refresh=True)`) 폐지 → Phase 2 (#9 economy 만) 와 Phase 3 (#19 per-stock 만) 으로 분산
+- 매크로 정형 4종 (#11~#14) 신규 BLOCKING 승격 (옛 v6 "선택"에서 의무로)
+- WebSearch BLOCKING 복원 (#16~#17 economy + #21 per-stock) — v7 자율 정책 부분 회귀. 도메인 화이트리스트 의무 (`websearch-domains.md`)
+- 백엔드 변경 (W1, 동일 라운드): `check_base_freshness(scope, code, auto_refresh)` 시그니처 — `scope ∈ {"all","economy","industry","stock"}`, `code` (industry/stock 일 때 단일 종목/산업 필터). default `scope="all"` 호환 유지.
 
-**⭐ #1**: Pending 도 daily 생성.
-**⭐ #2**: economy/industry 는 메인 inline 처리. v6 (정형 MCP 우선) 절차서 적용.
-**⭐ #5/#6**: executed 매매를 pending 으로 잘못 기재 방지.
-**⭐ #9**: per-stock-analysis 5단계 (v6 단순화 — base 조회 + WebSearch 의무 단계 폐기). `analyze_position` 1 MCP 로 통합.
+**⭐ #19 (per-stock)**: per-stock-analysis 5단계 (v6 단순화) — `analyze_position(code, include_base=True)` 1 MCP 로 12 카테고리 통합. step 1 의 stale 체크 범위가 종목+산업으로 좁혀짐 (economy 는 Phase 2 책임).
 
-긴급 시엔 `/stock-daily --fast` 명시로만 일부 스킵 허용.
+긴급 시엔 `/stock-daily --fast` 명시로만 일부 스킵 허용. Phase 2 매크로 정형 4종 (#11~#14) 과 Phase 3 per-stock WebSearch (#21) 는 `--fast` 에서도 스킵 권장 X (시장 컨텍스트 기반 판단의 토대).
+
+### BLOCKING 누락 시 처리
+
+- daily 자체는 **중단하지 않음** — 누락 항목을 보고서 최상단에 ⚠️ "BLOCKING 위반 — 누락: [#N (항목명)]" 명시 후 진행
+- 사용자가 **무시하고 진행** 또는 **재실행** 결정
+- 자가 보고로 "사실상 다 했다" 우기지 말 것 — 실제 호출 로그/응답 기준
 
 ### 자기 감사 — `save_portfolio_summary` 직전 출력
 
@@ -39,32 +57,42 @@
 
 ---
 
-## 7-Phase Pipeline (v6 단순화 — per-stock 5단계 정합)
+## 7-Phase Pipeline (라운드 2026-05-daily-workflow-tightening)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Phase 0: stale 조회 + 갱신 (per-stock 1·2단계 정합)           │
-│   check_base_freshness(auto_refresh=True)                   │
-│   stale 시 메인 inline (정형 MCP 우선 + WebSearch 자율)     │
+│ Phase 0: daily 스코프 로드                                    │
+│   list_daily_positions() — Active + Pending 일괄            │
+│   ※ base 체크 없음 (각 phase 가 자기 영역 책임)               │
 ├─────────────────────────────────────────────────────────────┤
-│ Phase 1: 과거 학습 회수 (어제·오늘 거래 + 주간 회고)          │
+│ Phase 1: 과거 학습 회수 (어제·오늘 거래 + 주간 회고 + 큐)     │
 │   get_portfolio_summary(yesterday) + reconcile_actions      │
 │   list_trades + reconcile_actions(today)                    │
 │   get_weekly_context(weeks=4)                               │
+│   get_weekly_strategy() — 월요일 분기                        │
+│   get_pending_base_revisions(weeks=4) — count≥3 ⚠️           │
 ├─────────────────────────────────────────────────────────────┤
-│ Phase 2: 시장·매크로 컨텍스트                                 │
-│   detect_market_regime()                                    │
-│   (선택) get_macro_indicators_us/kr + get_economic_calendar │
-│   (자율) WebSearch — 정형 미커버 nuance 시                  │
-│   economy/{오늘}.md 자동 생성                               │
+│ Phase 2: 매크로 + economy base 자기완결 (BLOCKING ⛔)         │
+│   ① check_base_freshness(scope="economy")                   │
+│   ② detect_market_regime()                                  │
+│   ③ get_macro_indicators_us()       ┐                       │
+│   ④ get_macro_indicators_kr()       │ 정형 4종 BLOCKING      │
+│   ⑤ get_yield_curve()               │                       │
+│   ⑥ get_fx_rate("DEXKOUS")          ┘                       │
+│   ⑦ (선택) get_economic_calendar(days=7)                    │
+│   ⑧ WebSearch 2회 BLOCKING (발언 톤 + 지정학)                │
+│       — Tier 1 + Tier 2 (websearch-domains.md)              │
+│   ⑨ #1 결과 is_stale=true 면 base-economy-update-inline 진입│
 ├─────────────────────────────────────────────────────────────┤
 │ Phase 3: 종목별 per-stock-analysis 순회 (Active + Pending)   │
 │   for code in all_codes:                                    │
 │     references/per-stock-analysis.md 5단계 절차              │
-│       1. stale 조회                                          │
-│       2. stale 갱신 (cascade, 발견 시만)                     │
+│       1. check_base_freshness(scope="stock", code=code)     │
+│          ※ economy 제외 — Phase 2 가 처리                    │
+│       2. cascade industry → stock (economy 제외)             │
 │       3. analyze_position(code, include_base=True) — 1 MCP  │
-│       4. LLM 종합 판단 (필요시 자율 WebSearch)              │
+│       4. LLM 종합 판단                                       │
+│          — WebSearch 1회/종목 BLOCKING ⛔ (Tier 1 + Tier 4)  │
 │       5. save_daily_report                                   │
 │     coverage_pct < 80% → ⚠️ 반쪽 분석 표기                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -90,6 +118,7 @@
 ### 1. 단일 종목 — `/stock-daily {종목}`
 - 하나의 종목만 daily 생성
 - market 자동 판정 (LLM 직접 판단 (6자리 숫자 = KR / 1~5자 대문자 = US))
+- Phase 2 매크로 BLOCKING 은 단일 종목 모드에서도 의무 (시장 컨텍스트 토대)
 
 ### 2. 포트폴리오 — `/stock-daily` / `/stock-daily portfolio`
 - `list_daily_positions()` 로 Active + Pending 일괄 로드
@@ -119,23 +148,82 @@
 
 ---
 
-## 종목별 — `references/per-stock-analysis.md` 5단계 절차 적용 (v6 단순화)
+## Phase 2 상세 — 매크로 + economy base 자기완결
 
-종목 1건 분석 단일 진입점. 본문은 옮기지 않음 — 절차서 직접 인용.
+> 시장 컨텍스트는 Phase 3 종목 분석의 토대. 라운드 2026-05-daily-workflow-tightening 으로 정형 4종 + WebSearch 2회 BLOCKING 승격. 옛 v6 "선택" 정책 폐지.
 
-요약 (v6, 2026-05):
-1. stale 조회 (`check_base_freshness`) → 2. stale 갱신 (cascade economy → industry → stock, 발견 시만) → 3. `analyze_position(code, include_base=True)` 1 MCP (12 카테고리 통합) → 4. LLM 종합 판단 (필요시 자율 WebSearch) → 5. `save_daily_report`
+### 2-① economy stale 자기 체크 (BLOCKING #9)
 
-`analyze_position` 응답 카테고리 (v4 보강 후 12종):
-**base** (3층 본문 inject) / context / realtime / indicators / signals / financials (raw, score 제거) / flow / volatility / events / consensus / **disclosures** (KR=DART 14일 / US=EDGAR 14일) / **insider_trades** (KR=major shareholders + exec / US=Finnhub 90일).
-**제거됨**: scoring / cell / is_stale (LLM 본문 판단 위임) / financials.score.
+```python
+fresh = check_base_freshness(scope="economy")
+# economy_base 만 검사. industries/stocks 미반환.
+# scope 인자 (W1 백엔드 변경, 동일 라운드): default "all" 호환
+```
+
+### 2-② 시장 국면 (BLOCKING #10)
+
+```python
+regime = detect_market_regime()
+# regime ∈ {"trending_up","range","trending_down","extreme_vol"} 등
+```
+
+### 2-③ ~ 2-⑥ 매크로 정형 4종 (BLOCKING #11~#14, ⛔)
+
+| 호출 | 응답 핵심 |
+|---|---|
+| `get_macro_indicators_us(default=True)` | DFF / CPIAUCSL / UNRATE / DGS10 / SP500 시계열 |
+| `get_macro_indicators_kr(default=True)` | 기준금리 / CPI / M2 / 경상수지 / 실업률 / 외환보유고 / 산업생산 8 default stat_code |
+| `get_yield_curve()` | UST 3M~30Y + 10Y_3M_spread + 역전 여부 |
+| `get_fx_rate("DEXKOUS")` | 1일 TTL FRED 환율 |
+
+⚠️ 4종 중 한 건이라도 누락 시 보고서 최상단 ⚠️ "BLOCKING 위반".
+
+### 2-⑦ 경제 캘린더 (선택, BLOCKING 외)
+
+```python
+events = get_economic_calendar(days=7)  # Finnhub
+# 누락 허용 — 외부 API 의존성 높음
+```
+
+### 2-⑧ WebSearch 2회 BLOCKING (#16, #17, ⛔)
+
+| # | 주제 | Tier | 권장 쿼리 (도메인 한정) |
+|---|---|---|---|
+| #16 | 발언 톤 (FOMC/금통위·CPI·연설) | Tier 1 + Tier 2 | `site:bloomberg.com OR site:reuters.com OR site:federalreserve.gov FOMC 발언 톤 YYYY-MM` |
+| #17 | 지정학 (중동·미중·우크라·제재) | Tier 1 | `site:bloomberg.com OR site:reuters.com OR site:ft.com OR site:wsj.com geopolitics YYYY-MM` |
+
+도메인 화이트리스트 단일 출처 → `websearch-domains.md`. 결과 인용 시 `(도메인, YYYY-MM-DD)` 의무.
+
+### 2-⑨ economy stale → inline 진입 (BLOCKING #18)
+
+2-① 결과 `is_stale=true` 면:
+```
+references/base-economy-update-inline.md 진입
+   └─ economy_base 갱신 (8 섹션 + 메타 7키)
+   └─ DB read-back: get_economy_base(market).updated_at 갱신 확인
+```
+
+stale 아니면 본 단계 skip.
+
+---
+
+## Phase 3 — 종목별 per-stock-analysis 순회
+
+종목 1건 분석은 모드 무관 항상 `references/per-stock-analysis.md` 5단계 절차 단일 사용. daily 모드는 `all_codes` 전부에 대해 1회씩 호출.
+
+라운드 2026-05-daily-workflow-tightening 의 변경:
+- step 1 — `check_base_freshness(scope="stock", code=code)` (economy 제외, Phase 2 책임)
+- step 2 — cascade 에서 economy 빠짐 (industry → stock 만)
+- step 4 — WebSearch 1회/종목 BLOCKING (Tier 1 + Tier 4 KR이면)
+
+상세는 `references/per-stock-analysis.md` 참조.
 
 ### 포트 단위 — 별도 호출 (per-stock-analysis 외부)
 
-- `detect_market_regime` (Phase 2 — regime)
+- `detect_market_regime` (Phase 2 — 위 2-②)
 - `portfolio_correlation(days=60)` (Phase 6 — correlation + effective_holdings)
 - `detect_portfolio_concentration` (Phase 6 — concentration)
-- `get_weekly_context(weeks=4)` (Phase 1 — backtest 룰 win-rate)
+- `get_weekly_context(weeks=4)` (Phase 1)
 - `rank_momentum(codes=[...])` (선택)
 
 ---
@@ -172,18 +260,21 @@
 
 ### 종료 직전 자가 점검
 
-- [ ] **base stale 잔여 0 확인** ⛔ — `check_base_freshness()` 재호출, economy/industries 의 `is_stale=true` 카운트 0. 미달이면 BLOCKING #2 위반 (Phase 0 단계 누락) → 즉시 inline 절차 진입 후 재검증
+- [ ] **economy stale 잔여 0 확인** ⛔ — Phase 2 #9 재호출 (`check_base_freshness(scope="economy")`). 미달이면 BLOCKING #9·#18 위반 → 즉시 inline 절차 진입 후 재검증
+- [ ] **per-stock stale 잔여 0 확인** ⛔ — `check_base_freshness(scope="all")` 1회 (마무리). industries/stocks `is_stale=true` 카운트 0
 - [ ] 종목별 `save_daily_report` 호출 — `list_daily_positions().counts.total` 만큼 (Active + Pending 포함). 호출 시 **`verdict` 인자 필수** (강한매수/매수우세/중립/매도우세/강한매도 5종 중 1)
 - [ ] 종합 `save_portfolio_summary` 호출 — `summary_content` + `per_stock_summary` + `action_plan` 3 인자 모두 채움
 - [ ] DB read-back: `list_reports_on_date(today)` 의 row 수 = `all_codes` 수
 - [ ] DB read-back: `get_portfolio_summary(today).found == true`
 - [ ] 누락 발견 시 즉시 재호출 (보고서 출력 전)
+- [ ] WebSearch BLOCKING 충족 — Phase 2 2회 + Phase 3 종목수×1회. 누락 시 ⚠️ 보고서 최상단
 
 ### 자주 빠지는 패턴 (4/29·4/30 사례)
 
 - ❌ "analyze_position × N ✅" 만 적고 save_daily_report 호출 누락 → stock_daily 빈 채로 daily 종료
 - ❌ verdict 인자를 None/공백 으로 보내서 verdict 컬럼 NULL 화 (서버 fix 후엔 verdict 무시 안 함)
 - ❌ portfolio_summary 본문은 적었지만 `save_portfolio_summary` MCP 호출 안 함
+- ❌ Phase 2 WebSearch 자율로 스킵 → 라운드 2026-05-daily-workflow-tightening 으로 BLOCKING 복원
 
 JSON 스키마: → `snapshot-schema.md` 참조.
 
@@ -244,9 +335,14 @@ references:
 - `expiration-rules.md` — base 만기·자동 재생성
 - `base-impact-classification.md` — 4분류 룰 (high/medium/review/low)
 - `base-patch-protocol.md` — Daily Appended Facts append 절차
-- `websearch-rules.md` — WebSearch 단위별 LLM 자율 가이드 (v7 — BLOCKING 폐지)
+- `websearch-rules.md` — WebSearch 정책 (v8, BLOCKING 복원 + 도메인 화이트리스트)
+- `websearch-domains.md` — Tier 1~4 도메인 화이트리스트 단일 출처 (라운드 2026-05-daily-workflow-tightening 신설)
 - `weekly-context-rules.md` — 4가지 활용 룰
 - `snapshot-schema.md` — `save_portfolio_summary` JSON 스키마
+- `base-economy-update-inline.md` — Phase 2 #18 진입점 (economy stale 시)
+- `base-industry-update-inline.md` — Phase 3 step 2 cascade 진입점 (industry stale 시)
+- `base-stock-update-inline.md` — Phase 3 step 2 cascade 진입점 (stock stale 시)
+- `per-stock-analysis.md` — Phase 3 종목 1건 단일 진입점 (5단계)
 
 assets:
 - `daily-report-template.md` — 종목 daily 본문

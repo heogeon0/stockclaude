@@ -17,35 +17,47 @@ market: "kr" | "us"
 
 ## 0단계 — 의존성 / 진입 가드
 
+- **Phase 2 매크로 BLOCKING 직후 economy stale 발견 시 진입** — daily Phase 2 에서 `check_base_freshness(scope="economy")` 결과 stale 이면 매크로 4종 (`detect_market_regime` / `get_macro_indicators_us` / `get_macro_indicators_kr` / `get_yield_curve` / `get_fx_rate`) BLOCKING 호출을 마친 직후 본 절차 진입. 이미 호출된 매크로 결과를 1단계 정형 MCP 1차 소스로 재사용 (재호출 X — 같은 분 내 캐시).
 - **다른 작업 중 inline 진입 시**: 직전 분석 결과 (다른 종목/포트폴리오 등) 를 economy 본문에 인용하지 않음. **깨끗한 상태로 10 섹션을 처음부터 작성 (Frontmatter + 8 본문 + Daily Facts — v4 시나리오 트리/사이클 단계 포함)**.
-- **정형 MCP 우선** — 1단계 표의 "MCP" 컬럼이 1차 소스. WebSearch 는 정형 미커버 nuance(발언 톤·지정학·시장 해석) 발견 시 LLM 자율 호출.
+- **정형 MCP 우선** — 1단계 표의 "MCP" 컬럼이 1차 소스. WebSearch 는 화이트리스트 도메인 (`references/websearch-domains.md`) 한정 BLOCKING 2회 (발언 톤 + 지정학) — 정형 미커버 nuance 강제 보강.
 - 본 절차 진행 중 daily/research 본문에 매크로 결과를 추가 inline 작성하지 말 것 (저장 후 daily 가 `get_economy_base` 로 다시 읽음).
 
 ---
 
 ## 1단계 — 데이터 수집
 
-**정형 MCP 우선, WebSearch 는 보조** — v1 신규 4 정형 매크로 툴이 수치 부분 90%+ 커버.
+**정형 MCP 1차 (Phase 2 BLOCKING 결과 재사용) + WebSearch 2회 BLOCKING** — 정형이 수치 90%+ 커버, WebSearch 가 발언 톤·지정학 nuance 강제 보강.
 
-| 차원 | 정형 MCP (1차) | WebSearch 권장 시점 (보조) |
+| 차원 | 정형 MCP (1차) | BLOCKING 횟수 |
 |---|---|---|
-| 금리 (KR) | `get_macro_indicators_kr(["722Y001"])` (한국은행 기준금리) | 금통위 직후 발언 톤·향후 가이던스 시 |
-| 금리 (US) | `get_macro_indicators_us(["DFF","DGS10","DGS2","DGS3MO"])` + `get_yield_curve()` | FOMC 직후 의장 기자회견 톤 시 |
-| 환율 | `get_fx_rate(pair="DEXKOUS")` (FRED) + KR 추가 시 `get_macro_indicators_kr(["731Y004"])` | 급변동 시 사유(개입·자금흐름) 추측 |
-| 물가 (US/KR) | `get_macro_indicators_us(["CPIAUCSL"])` / `get_macro_indicators_kr(["901Y009"])` | 발표 직후 시장 반응 해석 |
-| 경기·매크로 이벤트 | `detect_market_regime` + `get_economic_calendar(country=...)` (Finnhub) | — (정형 충분) |
-| 외국인 수급 (KR) | `analyze_flow` (포트 종목) + KR 통계 (`get_macro_indicators_kr`) | 월/주 추세 해석 시 |
-| 지정학 | — (정형 자산 거의 없음) | **WebSearch 권장** — 중동·미중·제재·무역 |
+| 금리 (KR) | `get_macro_indicators_kr(["722Y001"])` (한국은행 기준금리) | search 1 (금통위 톤 — KR 진입 시) |
+| 금리 (US) | `get_macro_indicators_us(["DFF","DGS10","DGS2","DGS3MO"])` + `get_yield_curve()` | search 1 (FOMC 톤 — US 진입 시) |
+| 환율 | `get_fx_rate(pair="DEXKOUS")` (FRED) + KR 추가 시 `get_macro_indicators_kr(["731Y004"])` | (발언 톤 search 1 에 통합 가능) |
+| 물가 (US/KR) | `get_macro_indicators_us(["CPIAUCSL"])` / `get_macro_indicators_kr(["901Y009"])` | (정형 1차 충분) |
+| 경기·매크로 이벤트 | `detect_market_regime` + `get_economic_calendar(country=...)` (Finnhub) | (정형 충분) |
+| 외국인 수급 (KR) | `analyze_flow` (포트 종목) + KR 통계 (`get_macro_indicators_kr`) | (정형 1차 충분) |
+| 지정학 | — (정형 자산 거의 없음) | **search 2 BLOCKING** — 중동·미중·제재·무역 |
 | 섹터 | `get_industry(code)` 종합 | — |
 
-WebSearch 권장 쿼리 (자율 판단 — 도메인 한정 권장):
-```
-site:cnbc.com OR site:reuters.com FOMC 발언 톤 YYYY-MM
-site:bok.or.kr OR site:edaily.co.kr 금통위 결정 YYYY-MM
-"한반도 OR 중동 OR 미중" 지정학 위험 YYYY-MM-DD
-```
+### WebSearch 2회 BLOCKING (의무)
 
-> 강제 호출 횟수 X — 정형으로 답이 나오는 차원은 search skip OK. 발언 톤·지정학 등 정형 미커버 영역만 자율 호출.
+> 도메인 화이트리스트는 `~/.claude/skills/stock/references/websearch-domains.md` (Tier 1~4 단일 출처) 참조. 본 절차 단독 진입 시에도 본문 도메인 리스트는 그쪽에서만 갱신.
+
+- **search 1 — 발언 톤** (Tier 1 글로벌 매체 + Tier 2 공식 기관)
+  - 진입 시장이 KR 이면 한은 금통위·기재부, US 이면 Fed/FOMC·BLS·SEC.
+  - 매체 표준 쿼리 (예시):
+    ```
+    site:reuters.com OR site:bloomberg.com OR site:cnbc.com FOMC chair tone YYYY-MM
+    site:bok.or.kr OR site:edaily.co.kr OR site:hankyung.com 금통위 발언 YYYY-MM
+    ```
+- **search 2 — 지정학** (Tier 1 글로벌 매체)
+  - 중동·미중·우크라·제재·무역 핵심 1건.
+  - 표준 쿼리 (예시):
+    ```
+    site:reuters.com OR site:ft.com OR site:wsj.com geopolitical risk middle-east YYYY-MM-DD
+    ```
+
+> 정형 MCP 가 수치 부분을 1차 커버하더라도, 발언 톤·지정학 nuance 는 정형 외 — 두 search 는 회피 불가 (BLOCKING). 누락 시 7단계 보고서 최상단에 `⚠️ WebSearch BLOCKING 위반` 명시 (재시도 권장).
 
 ---
 
@@ -156,8 +168,9 @@ assert result['updated_at'] > <save 호출 직전 시각>
 
 - 모든 숫자는 출처 + 시점 명시 (예: "FOMC 3/18: 3.50~3.75% 동결")
 - `[실제]` / `[추정]` / `[가정]` 태깅
-- WebSearch 결과 인용은 출처 URL 또는 매체 명시
-- 매일 갱신 — 캐시 재사용 금지
+- **WebSearch 결과 인용 시 도메인 + 날짜 명시 의무** — 예: `(Bloomberg, 2026-05-04)`, `(BOK 보도자료, 2026-05-03)`. 본문에 출처 직접 인라인 (각주·끝주 X).
+- 화이트리스트 외 도메인 인용 금지 (`websearch-domains.md` Tier 1~4 매치 필수). 매치 0이면 재검색.
+- 매일 갱신 — 캐시 재사용 금지 (단 같은 분 내 동일 쿼리 5분 TTL OK)
 
 ---
 
@@ -167,6 +180,8 @@ assert result['updated_at'] > <save 호출 직전 시각>
 - [ ] 메타 7키 모두 채움 (None/공백 금지)
 - [ ] `cycle_phase` 1개 명시 (확장/정점/수축/저점)
 - [ ] `scenario_probs` 3 시나리오 합 = 1.0
+- [ ] **WebSearch 2회 BLOCKING 충족** — search 1 (발언 톤, Tier 1+2) + search 2 (지정학, Tier 1)
+- [ ] **인용 도메인·날짜 본문에 명시** — 모든 WebSearch 인용에 `(매체, YYYY-MM-DD)` 동반. 화이트리스트 외 도메인 사용 금지 (`websearch-domains.md` Tier 1~4 매치).
 - [ ] `save_economy_base(market, content, context, cycle_phase, scenario_probs)` 호출 성공
 - [ ] `get_economy_base(market)` read-back 으로 `updated_at` 갱신 + cycle_phase / scenario_probs 일치 확인
 - [ ] Daily Appended Facts 비움 + last full review 날짜 갱신

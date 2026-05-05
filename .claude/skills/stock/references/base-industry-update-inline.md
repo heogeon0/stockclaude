@@ -26,25 +26,37 @@ name: 산업 코드 (KR 한글 슬러그 또는 us-{gics_sector_slug})
 
 ## 1단계 — 데이터 수집
 
-**산업 평균 메트릭(정량)은 정형 MCP 1회. 5 차원 본문(정성)은 WebSearch 권장 — 정형 자산 거의 없음.**
+**산업 평균 메트릭(정량)은 정형 MCP 1회. 5 차원 본문(정성)은 WebSearch 2회 BLOCKING — 정형 자산 거의 없음.**
 
-| 차원 | 정형 MCP (1차) | WebSearch 권장 (도메인 한정) |
+| 차원 | 정형 MCP (1차) | BLOCKING 횟수 |
 |---|---|---|
 | 산업 평균 메트릭 (avg_per/pbr/roe/op_margin/vol_baseline_30d) | **`compute_industry_metrics(industry_code)`** — leader 종목 평균 자동 산출 | — |
-| 사이클 | — | 애널 리포트 / 산업 뉴스 (`site:hankyung.com OR site:bloomberg.com`) |
-| 점유율 | — | 가트너 / IDC / 카운터포인트 (`Gartner OR IDC market share`) + 기업 IR |
-| 규제 | — | `site:fsc.go.kr OR site:sec.gov OR site:europa.eu` |
-| 경쟁 (M&A·분사) | `compute_industry_metrics` 의 leaders 변동 + leader 종목별 `get_kr_disclosures` / `get_us_disclosures` | M&A 루머 / 비공식 보도 |
-| 기술 | — | 학회 / 기업 공식 발표 (`site:arxiv.org OR site:nature.com` 등) |
+| 사이클 | — | (search 1·2 결과 반영) |
+| 점유율 | — | **search 1 BLOCKING** (Tier 3 — Gartner / IDC / Counterpoint / Statista) |
+| 규제 | — | (정형 보조 — leader 종목 disclosures 우선) |
+| 경쟁 (M&A·분사) | `compute_industry_metrics` 의 leaders 변동 + leader 종목별 `get_kr_disclosures` / `get_us_disclosures` | (정형 1차 충분) |
+| 기술 | — | **search 2 BLOCKING** (Tier 3 — SemiAnalysis / TrendForce / Omdia 또는 산업별 전문) |
 
-WebSearch 권장 쿼리 (도메인 한정 강력 권장):
-```
-"YYYY {산업} 시장 점유율" Gartner OR IDC
-site:fsc.go.kr OR site:sec.gov "{산업}" 규제
-site:bloomberg.com OR site:reuters.com "{산업}" M&A YYYY
-```
+### WebSearch 2회 BLOCKING (의무)
 
-> v6 산업 표준 메트릭(avg_per/pbr/roe/op_margin/vol_baseline_30d)은 `compute_industry_metrics` 1회 호출로 자동 산출 — 수동 산출(WebSearch + DART/EDGAR) 불필요.
+> 도메인 화이트리스트는 `~/.claude/skills/stock/references/websearch-domains.md` (Tier 1~4) 참조. 본 절차에서 직접 도메인 리스트 작성 금지.
+
+- **search 1 — 시장 점유율** (Tier 3 — 산업 전문 리서치)
+  - Gartner / IDC / Counterpoint / Statista 등. Top 5 점유율 + 추이.
+  - 표준 쿼리 (예시):
+    ```
+    "YYYY {산업} market share" site:gartner.com OR site:idc.com
+    "YYYY {산업} 시장 점유율" Counterpoint OR Statista
+    ```
+- **search 2 — 기술 트렌드** (Tier 3 — 산업 전문 또는 학술)
+  - 반도체: SemiAnalysis / TrendForce, 디스플레이: Omdia / DSCC, 배터리: SNE Research, AI: arxiv.org / nature.com 등 산업별 매체.
+  - 표준 쿼리 (예시):
+    ```
+    site:semianalysis.com OR site:trendforce.com {기술 키워드} YYYY
+    site:omdia.com OR site:dscc.co {기술 키워드} YYYY
+    ```
+
+> 정량 평균 메트릭은 `compute_industry_metrics` 1회 호출로 자동 산출 — 수동 산출(WebSearch + DART/EDGAR) 불필요. WebSearch 는 5 차원 본문 (정성) 의 점유율·기술 nuance 강제 보강용. 누락 시 보고서 최상단 `⚠️ WebSearch BLOCKING 위반` 명시.
 
 ---
 
@@ -159,7 +171,8 @@ assert result['score'] == <저장값>
 - 모든 점유율 / 수치는 출처 명시 (조사기관 + 발표일)
 - 경쟁 구도는 Top 5 기업 명시 + 시장 점유율 % 동반
 - 규제는 발효일 / 영향 범위 / 영향도 명시
-- WebSearch 결과는 출처 URL 또는 매체 명시
+- **WebSearch 결과 인용 시 도메인 + 날짜 명시 의무** — 예: `(Gartner, 2026-04)`, `(SemiAnalysis, 2026-05-01)`. 5 차원 본문 (점유율·기술·사이클) 에 인라인 동반.
+- 화이트리스트 외 도메인 인용 금지 (`websearch-domains.md` Tier 1~4 매치 필수). 매치 0이면 재검색.
 
 ---
 
@@ -170,6 +183,8 @@ assert result['score'] == <저장값>
 - [ ] `cycle_phase` 1개 명시 (도입/성장/성숙/쇠퇴)
 - [ ] `momentum_rs_3m` / `momentum_rs_6m` 수치 명시 (정성 표현 X)
 - [ ] `leader_followers` Top 3 리더 + 팔로워 2~3개 명시
+- [ ] **WebSearch 2회 BLOCKING 충족** — search 1 (점유율, Tier 3) + search 2 (기술 트렌드, Tier 3)
+- [ ] **인용 도메인·날짜 본문에 명시** — 모든 WebSearch 인용에 `(매체, YYYY-MM-DD)` 동반. 화이트리스트 외 도메인 사용 금지 (`websearch-domains.md` Tier 1~4 매치).
 - [ ] `save_industry(...)` 호출 성공 (새 인자 4개 포함)
 - [ ] `get_industry(code)` read-back — `updated_at` 갱신 + `score` / `cycle_phase` 일치 확인
 - [ ] Daily Appended Facts 비움 + last full review 갱신
