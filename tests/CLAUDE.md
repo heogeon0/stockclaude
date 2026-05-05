@@ -5,7 +5,7 @@
 
 ---
 
-## 1. 현 상태 (research §7)
+## 1. 현 상태
 
 - 유일한 테스트: `tests/test_measure_websearch.py` (203줄). `scripts/measure_websearch.py` 집계 함수만 검증.
 - **핵심 비즈니스 로직 0% 커버** — 88 MCP 툴 / 24 repos / 16 analysis 모듈 / 13 API 라우터 모두 무테스트.
@@ -36,11 +36,11 @@
 
 ## 4. 픽스처 가이드 (신규)
 
-- DB 의존 테스트는 `tests/conftest.py`에 `pg_conn` 픽스처를 두고 `docker-compose.yml`의 `stock-manger-pg` (오타 — §10.1 이슈 추적)에 연결.
-- 단일 유저 fallback은 `STOCK_USER_ID` env로 주입. 픽스처에서 명시 (research §4.9).
+- DB 의존 테스트는 `tests/conftest.py`에 `pg_conn` 픽스처를 두고 `docker-compose.yml`의 `stock-manger-pg` (오타 — #11 이슈 추적)에 연결.
+- 단일 유저 fallback은 `STOCK_USER_ID` env로 주입. 픽스처에서 명시.
 - 트랜잭션 롤백 패턴 — 각 테스트는 savepoint로 격리, 종료 시 ROLLBACK.
-- 한글 컬럼 OHLCV는 `날짜/시가/고가/저가/종가/거래량` 표준 (research §4.2). synthetic 생성 시 컨벤션 준수.
-- KST 거래일 비교(research §4.1)가 들어간 코드는 `freezegun` + `Asia/Seoul` 명시.
+- 한글 컬럼 OHLCV는 `날짜/시가/고가/저가/종가/거래량` 표준. synthetic 생성 시 컨벤션 준수.
+- KST 거래일 비교가 들어간 코드는 `freezegun` + `Asia/Seoul` 명시.
 
 ---
 
@@ -55,7 +55,7 @@
 
 ## 6. 이슈 추적
 
-- §10.7 "MCP/repos smoke 테스트 도입 로드맵" — GitLab 이슈로 발행됨. 본 폴더 작업 전 이슈 본문 확인.
+- #10 "MCP/repos smoke 테스트 도입 로드맵" — GitHub 이슈로 발행됨. 본 폴더 작업 전 이슈 본문 확인.
 - 본 CLAUDE.md는 *현재 약한 상태에서의 가이드*. 인프라 도입 후 갱신 필요.
 
 ---

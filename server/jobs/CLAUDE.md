@@ -5,11 +5,11 @@
 
 ---
 
-## ⚠️ 현재 상태 — 진입점 미확인 (research §10.6)
+## ⚠️ 현재 상태 — 진입점 미확인
 
 - 위 3개 파일이 존재하지만 **`server/main.py`·`server/mcp/server.py` 어디서도 import 안 보임**.
 - cron / 스케줄러 / Procfile / nixpacks 등록 위치도 미확인.
-- 사용 중인지·dead code인지 결정되지 않은 상태. **§10.6 GitLab 이슈로 추적 중**.
+- 사용 중인지·dead code인지 결정되지 않은 상태. **#16 GitHub 이슈로 추적 중**.
 
 ---
 
@@ -39,5 +39,5 @@
 
 ## 이슈 추적
 
-- §10.6은 본 워커가 GitLab 이슈로 발행 — `chore(server/jobs): 사용 여부 확인 — 진입점 미상` (제목/링크는 W3·W7이 인덱스에 채움).
+- #16은 본 워커가 GitHub 이슈로 발행 — `chore(server/jobs): 사용 여부 확인 — 진입점 미상` (제목/링크는 W3·W7이 인덱스에 채움).
 - 이슈 closing 후 본 CLAUDE.md를 사용 중/삭제 결과로 갱신.

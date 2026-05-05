@@ -58,7 +58,7 @@
 
 - Python 측 datetime 비교는 `ZoneInfo("Asia/Seoul")` 명시. `datetime.now()` 그대로 금지 (서버 로컬 타임 의존).
 - `week_start`도 KST 월요일 (`server/repos/weekly_strategy.py:24`).
-- **현재 일관성 깨짐**: `server/repos/portfolio_snapshots.py:170`만 `datetime.now(tz=...timezone.utc)`로 UTC 사용. §10.3 이슈로 추적 중. **신규 코드는 KST 따른다**. 기존 라인 수정 시 의도 확인 후 결정.
+- **현재 일관성 깨짐**: `server/repos/portfolio_snapshots.py:170`만 `datetime.now(tz=...timezone.utc)`로 UTC 사용. #13 이슈로 추적 중. **신규 코드는 KST 따른다**. 기존 라인 수정 시 의도 확인 후 결정.
 
 ---
 

@@ -77,7 +77,7 @@ const PortfolioPage = () => {
 - [ ] 1. **폴더 생성**: `web/src/features/<domain>/`.
 - [ ] 2. **Page.tsx 또는 `<Domain>Page.tsx` 작성** — 데이터 훅 + 레이아웃만.
 - [ ] 3. **데이터 훅** — `web/src/hooks/use<Resource>.ts` 추가 (해당 폴더 CLAUDE.md 룰 준수). 백엔드 라우터가 없으면 `server/api/`에 먼저 추가.
-- [ ] 4. **타입** — `web/src/types/api.ts`에 응답 모델 추가 (§10.5 수동 동기화 의무).
+- [ ] 4. **타입** — `web/src/types/api.ts`에 응답 모델 추가 (#15 수동 동기화 의무).
 - [ ] 5. **App.tsx 라우트 등록** — `NAV_ITEMS`에 추가 + Route element 연결 (§3 routing 룰은 web/CLAUDE.md).
 - [ ] 6. **components/** — 처음엔 비워두고, Page가 길어질 때 점진 분리.
 - [ ] 7. **격리 점검** — 다른 features의 컴포넌트를 import하지 않는지.
@@ -129,9 +129,9 @@ const PortfolioPage = () => {
 ## 8. 폐기 인지 — strategy/ 페이지 잔재
 
 - `strategy/components/Signals12Section.tsx`, `VolFinMatrixSection.tsx`, `PositionActionRulesSection.tsx`, `BaseExpirySection.tsx`는 라운드 2026-05에서 폐기된 v17 매트릭스/12셀/포지션 액션 룰을 시각화한다.
-- 이 컴포넌트들은 `web/src/lib/{signals12,volFinMatrix,positionActionRules,baseExpiryRules}.ts`에 의존 — 모두 §10.4 이슈로 정리 대상.
+- 이 컴포넌트들은 `web/src/lib/{signals12,volFinMatrix,positionActionRules,baseExpiryRules}.ts`에 의존 — 모두 #14 이슈로 정리 대상.
 - **신규 페이지/섹션은 같은 패턴 추가 금지**. 매트릭스 룩업 UI는 백엔드 rule_catalog 조회로 대체.
-- 잔재 정리는 §10.4 이슈 결정 후 — 현 시점에선 새 의존 추가만 금지.
+- 잔재 정리는 #14 이슈 결정 후 — 현 시점에선 새 의존 추가만 금지.
 
 ---
 

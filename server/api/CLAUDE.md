@@ -67,7 +67,7 @@ def get_portfolio(
     return PortfolioOut(positions=..., cash=..., kr_total_krw=..., ...)
 ```
 
-**수동 동기화 의무 (§10.5)**: 응답 필드 추가/변경 시 `web/src/types/api.ts`도 같이 수정. 현재 자동 생성(openapi-typescript) 미적용 — silent drift 위험. 자동화 도입은 §10.5 이슈로 추적.
+**수동 동기화 의무 (#15)**: 응답 필드 추가/변경 시 `web/src/types/api.ts`도 같이 수정. 현재 자동 생성(openapi-typescript) 미적용 — silent drift 위험. 자동화 도입은 #15 이슈로 추적.
 
 ## 직접 SQL 금지 — repos 경유
 
@@ -87,13 +87,13 @@ with get_conn() as conn:
 
 ## 환율 변환 위치
 
-**API 단에서만** 수행 — MCP는 unconverted 반환. 통화 단위 섞임 방지 (research §4.3).
+**API 단에서만** 수행 — MCP는 unconverted 반환. 통화 단위 섞임 방지.
 
 - `stocks.currency` ∈ ('KRW','USD'). `cash_balance`도 currency별 별도 행.
 - KR/US 합산이 필요한 응답은 라우터 안에서 환율 적용 후 같은 단위로 반환.
 - pydantic 모델에 `kr_total_krw / us_total_usd` 처럼 **단위 명시 필드**로 분리하면 더 안전 (예: `PortfolioOut`).
 
-## Pending vs Active (research §4.4)
+## Pending vs Active
 
 - `get_portfolio` (FastAPI)는 `status` query param: `"active"`(default) | `"all"`.
 - daily 워크플로우 데이터를 web에 노출할 때는 `positions.list_all(user_id)` 사용 (Active+Pending+Close 구분 가능 컬럼 포함).

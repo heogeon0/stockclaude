@@ -91,7 +91,7 @@
 | `decision-tree.md` (5×6) | `_archive/` | 2026-05-stock-daily-overhaul | anchor 효과 + 검증 안 된 직관 |
 | `scoring-weights.md` (합성 점수 가중치) | `_archive/` | 2026-05-stock-daily-overhaul | 합성 점수가 LLM 본문 추론 anchor |
 | `position-action-rules.md` (6대 룰) | `_archive/` | 2026-05-stock-daily-overhaul | 매트릭스 룩업 폐기 |
-| 12셀 매트릭스 (volFinMatrix) | (잠재 — 프론트 잔재 §10.4) | 2026-05-stock-daily-overhaul | 재제안 금지 |
+| 12셀 매트릭스 (volFinMatrix) | (잠재 — 프론트 잔재 #14) | 2026-05-stock-daily-overhaul | 재제안 금지 |
 | base-*-updater sub-agent 절차서 | (커밋 c9e3994 로 inline 통합) | 2026-04-30 | sub-agent 컨텍스트 분리로 base 본문 누수 |
 
 ### 4.3 재제안 금지 목록 (Claude 가 무의식적으로 다시 만들려는 패턴)

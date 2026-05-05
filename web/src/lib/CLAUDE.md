@@ -22,7 +22,7 @@
 
 ---
 
-## 2. 폐기 매트릭스 잔재 (§10.4 — 가장 중요)
+## 2. 폐기 매트릭스 잔재 (#14 — 가장 중요)
 
 라운드 2026-05 (`docs/rounds/2026-05-stock-daily-overhaul.md`)에서 다음이 **폐기**됐다:
 - v17 12셀 매트릭스 (변동성 × 재무 헬스).
@@ -53,9 +53,9 @@ backend는 `references/_archive/`로 이동했다. 그러나 프론트엔드 `we
 ### 룰 (즉시 적용)
 
 - **신규 코드 추가 금지** — 본 4개 파일 또는 동일 패턴(매트릭스 룩업·룰 weight·만기일수)을 **lib/ 에 새로 넣지 말 것**.
-- **수정 시 우선 §10.4 이슈 확인** — 폐기 vs 보존 결정 미정. 변경 전에 이슈 코멘트 또는 사용자 확인.
+- **수정 시 우선 #14 이슈 확인** — 폐기 vs 보존 결정 미정. 변경 전에 이슈 코멘트 또는 사용자 확인.
 - **새 features 페이지에서 import 금지** — 잔재가 더 퍼지지 않게.
-- **삭제·대체는 §10.4 이슈로 추적** — 본 작업에선 코드 수정 X (룰만 박음).
+- **삭제·대체는 #14 이슈로 추적** — 본 작업에선 코드 수정 X (룰만 박음).
 
 ---
 
@@ -133,7 +133,7 @@ export const toNum = (v: string | number | null | undefined): number => {
 ### Bad — 비즈니스 룰 카피
 
 ```ts
-// 안티패턴 — 이런 패턴이 lib/에 등장하면 §10.4 위반
+// 안티패턴 — 이런 패턴이 lib/에 등장하면 #14 위반
 export const POSITION_RULES = [
   { no: 2, body: "verdict=매도우세 + 수익률 +10% 이상이면 부분 익절" },
   // ... 임계값·매트릭스가 frontend에 박힘 → 백엔드 룰 변경 시 silent drift
@@ -146,7 +146,7 @@ export const POSITION_RULES = [
 
 ## 9. 이슈 추적
 
-- **§10.4 — `chore(web/src/lib): 폐기 매트릭스 잔재 정리`** (W4 발행 예정).
+- **GitHub Issue #14 — `chore(web/src/lib): 폐기 매트릭스 잔재 정리 (signals12/positionActionRules/baseExpiryRules/volFinMatrix)`** (발행 완료).
   - 본문 3섹션:
     1. 발견된 룰 — "lib/는 표시(format/decimal/색상)만. 비즈니스 룰은 백엔드 SSoT."
     2. 어긋난 위치 — `signals12.ts / positionActionRules.ts / baseExpiryRules.ts / volFinMatrix.ts` (head 확인: 4개 모두 v17 매트릭스/룩업 기반, 백엔드는 라운드 2026-05에서 폐기). 사용처: `features/strategy/components/{Signals12Section,VolFinMatrixSection,PositionActionRulesSection,BaseExpirySection}.tsx`.

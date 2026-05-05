@@ -13,11 +13,11 @@
 
 ---
 
-## ⚠️ 수동 동기화 의무 (§10.5)
+## ⚠️ 수동 동기화 의무 (#15)
 
 - `web/src/types/api.ts`가 본 폴더의 pydantic 모델을 **수동 미러링**.
 - **필드 추가·이름 변경·타입 변경 시 `web/src/types/api.ts`도 같이 수정 의무**. 빠뜨리면 frontend 빌드 실패 또는 silent drift (런타임 undefined).
-- 자동 생성 미적용 — `openapi-typescript` 도입은 §10.5 GitLab 이슈로 추적 중.
+- 자동 생성 미적용 — `openapi-typescript` 도입은 #15 GitHub 이슈로 추적 중.
 - 신규 모델 추가 PR은 같은 PR에서 frontend types도 갱신 (리뷰어가 양쪽 diff 확인).
 
 ---
@@ -61,5 +61,5 @@
 2. 클래스명 — `XxxOut` (응답) / `XxxIn` (요청).
 3. 필드명 snake_case.
 4. Optional 명시 + 기본값 부여.
-5. **`web/src/types/api.ts` 같이 수정** (§10.5).
+5. **`web/src/types/api.ts` 같이 수정** (#15).
 6. FastAPI 라우터에 `response_model=` 등록.

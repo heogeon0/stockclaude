@@ -65,7 +65,7 @@ DROP TABLE IF EXISTS old_xxx;
    SELECT * FROM schema_migrations WHERE filename = 'NN_<설명>.sql';
    ```
 5. 영향받는 `repos/`·`analysis/`·`schemas/` 코드 동시 수정 (한 PR 권장).
-6. 신규 컬럼이 응답에 노출되면 `web/src/types/api.ts` 수동 동기화 (server/schemas/CLAUDE.md §10.5 참조).
+6. 신규 컬럼이 응답에 노출되면 `web/src/types/api.ts` 수동 동기화 (server/schemas/CLAUDE.md #15 참조).
 7. `db/schema.sql` 스냅샷 갱신 (선택, 누적 결과 미러링).
 
 ## 7. 운영 스크립트 수정 시 룰

@@ -25,7 +25,7 @@
 
 ---
 
-## 3. 표준 패턴 (research §5.8 인용)
+## 3. 표준 패턴
 
 ```ts
 import { useQuery } from "@tanstack/react-query";
@@ -99,10 +99,10 @@ export const useRecordTrade = () => {
 
 ---
 
-## 6. 타입 — `web/src/types/api.ts` 수동 동기화 (§10.5 이슈)
+## 6. 타입 — `web/src/types/api.ts` 수동 동기화 (#15 이슈)
 
 - `apiGet<XxxOut>` / `apiPost<XxxOut, XxxIn>`에 사용하는 모든 타입은 **`web/src/types/api.ts`에 정의**.
-- 백엔드 `server/schemas/*.py` pydantic 모델과 **수동 동기화** — 자동 생성(openapi-typescript) 미적용 (§10.5 이슈로 추적).
+- 백엔드 `server/schemas/*.py` pydantic 모델과 **수동 동기화** — 자동 생성(openapi-typescript) 미적용 (#15 이슈로 추적).
 - **신규 훅 추가 시 의무**:
   1. 백엔드 라우터의 `response_model` 확인.
   2. `web/src/types/api.ts`에 대응 TS 타입 추가/갱신.
@@ -131,7 +131,7 @@ export const useRecordTrade = () => {
 - [ ] 1. **엔드포인트 단일성** 확인 — 같은 endpoint 다루는 기존 훅 없는지 grep (`grep -r "apiGet.*<path>" web/src/hooks/`).
 - [ ] 2. **파일명** = 훅명 (camelCase, `use` prefix). 1파일 1리소스.
 - [ ] 3. **queryKey** = `["resource", ...params]` 컨벤션.
-- [ ] 4. **타입** — `web/src/types/api.ts`에 응답 모델 추가/확인 (§10.5 동기화 의무).
+- [ ] 4. **타입** — `web/src/types/api.ts`에 응답 모델 추가/확인 (#15 동기화 의무).
 - [ ] 5. **반환 형태** — `UseQueryResult` 그대로. 풀어서 반환 금지.
 - [ ] 6. **mutation이면 invalidate 대상** 명시.
 - [ ] 7. 호출부에서 `data`·`error`·`isPending` 분기 가능한지 점검.
@@ -157,7 +157,7 @@ export const useRecordTrade = () => {
 - **queryKey 누락 인자** — 인자 의존이 있는데 queryKey에 안 넣으면 캐시 충돌. 모든 인자는 queryKey에.
 - **fetch 직접 호출** — `apiGet` 우회 시 `ApiError`가 안 나오고 base URL 일관성 깨짐.
 - **데이터 풀어 반환** — 호출부에서 React Query 결과 분기 안 됨 (§4 Bad 사례).
-- **types/api.ts 갱신 누락** — 응답 변경 시 silent drift. PR 시 `server/schemas/` 변경분과 같이 봐야 함 (§10.5).
+- **types/api.ts 갱신 누락** — 응답 변경 시 silent drift. PR 시 `server/schemas/` 변경분과 같이 봐야 함 (#15).
 - **invalidate 누락** — mutation 후 데이터 stale.
 
 ---

@@ -22,7 +22,7 @@
 
 ---
 
-## 3. 라우팅 현 구조 (§10.9 명문화)
+## 3. 라우팅 현 구조
 
 - `web/src/routes/`는 의도된 디렉토리 구조였지만, 현재는 `App.tsx`의 `NavLink` + `Outlet`으로 모든 라우팅을 정의한다 (sidebar 5개 메뉴 + skills 1개 참고 메뉴).
 - **신규 페이지 추가 절차**:
@@ -36,7 +36,7 @@
 - `/` 포트폴리오 (end), `/today` 데일리 리포트, `/trades` 매매 기록, `/review` 주간 회고, `/strategy` 전략·로직.
 - 참고 그룹: `/skills` 스킬 매뉴얼.
 
-> 사이드바 타이틀이 `stock-manager`로 남아있는 잔재는 외부 식별자 통일 이슈(§10.1)와 함께 다룬다 — 본 작업에서 코드 수정은 X.
+> 사이드바 타이틀이 `stock-manager`로 남아있는 잔재는 외부 식별자 통일 이슈(#11)와 함께 다룬다 — 본 작업에서 코드 수정은 X.
 
 ---
 
@@ -45,7 +45,7 @@
 - `web/src/hooks/` — React Query 훅 28개. queryKey 컨벤션·`apiGet` 패턴·`UseQueryResult` 반환 룰. (깊이 3)
 - `web/src/features/` — 도메인별 페이지 + components. features 간 import 금지(격리). (깊이 3)
 - `web/src/lib/` — **표시용 only**. 비즈니스 룰은 백엔드 SSoT (rule_catalog). 폐기 매트릭스 잔재 정리 이슈 추적 중. (깊이 3)
-- `web/src/types/api.ts` — 백엔드 pydantic 응답을 TS로 **수동 미러링** (자동 생성 미적용 — §10.5 이슈 추적).
+- `web/src/types/api.ts` — 백엔드 pydantic 응답을 TS로 **수동 미러링** (자동 생성 미적용 — #15 이슈 추적).
 
 본 web/CLAUDE.md는 폴더 일반 룰만 보유. 디테일은 most-local CLAUDE.md를 따른다 (깊이 역전 금지).
 

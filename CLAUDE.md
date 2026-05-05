@@ -68,7 +68,7 @@
 
 ## agent/ 워크플로우
 
-`research → plan → modifier → action` 4단계 (글로벌 `~/.claude/CLAUDE.md`). `agent/research.md`·`agent/plan.md`는 **in-flight 작업 산출물**이라 `.gitignore` 유지 — PR에 올라가지 않는다. 의도된 정책 (§10.10 확인됨), 변경 금지.
+`research → plan → modifier → action` 4단계 (글로벌 `~/.claude/CLAUDE.md`). `agent/research.md`·`agent/plan.md`는 **in-flight 작업 산출물**이라 `.gitignore` 유지 — PR에 올라가지 않는다. 의도된 정책 ((agent/ gitignore 의도) 확인됨), 변경 금지.
 
 ## 네이밍 룰
 

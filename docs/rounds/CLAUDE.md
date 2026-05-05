@@ -41,7 +41,7 @@
 
 ## 4. 라운드 인덱스 (현 인벤토리)
 
-> §10.8 "인덱스 부재" 룰화. 신규 라운드 추가 시 반드시 1줄 갱신.
+> (라운드 인덱스 룰) "인덱스 부재" 룰화. 신규 라운드 추가 시 반드시 1줄 갱신.
 
 - **`2026-05-stock-daily-overhaul.md`** — `/stock-daily` per-stock-analysis 단일 진입점(7단계) + analyze_position raw 9 카테고리 + base 3층 본문 inject 의무 + 정량 결론 컬럼(verdict/size_pct/stop_method/...) + learned_patterns + weekly_strategy 5번째 모드 + 산업 표준 메트릭(industries.avg_per/avg_pbr/avg_roe/...) + 자동 마이그레이션 인프라. **폐기**: v6 12셀 매트릭스 / decision-tree 5×6 / position-action-rules 6대 룰 / base-*-updater 서브에이전트 → 모두 `references/_archive/` 보존.
 - **`2026-05-weekly-review-overhaul.md`** — 4-Phase weekly-review (Phase 0 base 갱신 → Phase 1 종목별 8-step → Phase 2 종합 6-section → Phase 3 base 역반영 분기 → Phase 4 룰 win-rate) + `prepare_weekly_review_per_stock` / `prepare_weekly_review_portfolio` 묶음 MCP + `weekly_review_per_stock` 테이블 + base 영향 4분류(decisive/supportive/contradictory/neutral) + append-back 채널 + rule_catalog DB SSoT 16 active + register_rule MCP 노출 + W18 GOOGL contradictory 분기 사례.

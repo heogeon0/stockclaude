@@ -25,7 +25,7 @@
 - `positions.status` ∈ {Active, Pending, Close} (Pending은 qty=0 이지만 base.md 보유 — daily 분석 대상, §4.4 참조).
 - 신규 enum 도입 시 CHECK 사용. PostgreSQL `ENUM` 타입은 마이그레이션 비용 큼 — 회피.
 
-## 4. TIMESTAMPTZ + KST 캐스트 (§4.1, §10.3 보강)
+## 4. TIMESTAMPTZ + KST 캐스트 (§4.1, #13 보강)
 
 - 시각 컬럼은 **TIMESTAMPTZ**. 신규 컬럼도 동일.
 - **거래일 기준 비교는 KST 강제**:
@@ -36,7 +36,7 @@
 - 함정: `created_at::date` 등 캐스트 누락 시 서버 로컬/UTC 기준이 되어 거래일 한 칸 어긋남.
 - 신규 SQL 작성 시 — 거래일·주(week)·월 비교 시 반드시 `AT TIME ZONE 'Asia/Seoul'` 통과.
 - `week_start`는 KST 월요일 (`server/repos/weekly_strategy.py:24`).
-- **불일치 추적**: `server/repos/portfolio_snapshots.py:170`만 UTC 사용 — 의도 확인 전까지 신규 코드는 KST 따름. (관련 GitLab 이슈는 W2가 발행.)
+- **불일치 추적**: `server/repos/portfolio_snapshots.py:170`만 UTC 사용 — 의도 확인 전까지 신규 코드는 KST 따름. (관련 GitHub 이슈는 W2가 발행.)
 
 ## 5. seed 분리
 
