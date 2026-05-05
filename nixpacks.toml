@@ -1,7 +1,14 @@
 # nixpacks.toml
-# Railway Nixpacks 빌드에 추가 패키지 명시.
+# Railway Nixpacks 빌드 설정.
 # 목적: scripts/run_migrations.sh 가 psql CLI 를 사용하므로 postgresql-client 필요.
 # Procfile 의 release-phase 가 빌드 산출물 사용 시점에서 psql 호출.
+
+[variables]
+# uv 버전 명시 — 미명시 시 NIXPACKS_UV_VERSION 빈 문자열로 `pip install uv==` 깨진 명령 생성.
+# 0.11.x 시리즈는 로컬 uv (0.11.7) 와도 호환.
+NIXPACKS_UV_VERSION = "0.11.7"
+# Python 3.12+ (pyproject.toml requires-python).
+NIXPACKS_PYTHON_VERSION = "3.12"
 
 [phases.setup]
 aptPkgs = ["postgresql-client"]
