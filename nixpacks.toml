@@ -3,12 +3,15 @@
 # 목적: scripts/run_migrations.sh 가 psql CLI 를 사용하므로 postgresql-client 필요.
 # Procfile 의 release-phase 가 빌드 산출물 사용 시점에서 psql 호출.
 
-[variables]
-# uv 버전 명시 — 미명시 시 NIXPACKS_UV_VERSION 빈 문자열로 `pip install uv==` 깨진 명령 생성.
-# 0.11.x 시리즈는 로컬 uv (0.11.7) 와도 호환.
-NIXPACKS_UV_VERSION = "0.11.7"
-# Python 3.12+ (pyproject.toml requires-python).
-NIXPACKS_PYTHON_VERSION = "3.12"
-
 [phases.setup]
 aptPkgs = ["postgresql-client"]
+
+# install phase 전체 override — Railway nixpacks 가 NIXPACKS_UV_VERSION env 미설정 시
+# `pip install uv==` (빈 specifier) 로 빌드 실패하던 문제 우회.
+# uv 버전 직접 박아서 env var 의존 제거.
+[phases.install]
+dependsOn = ["setup"]
+cmds = [
+  "python -m venv --copies /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip && pip install 'uv==0.11.7' && uv sync --no-dev --frozen"
+]
