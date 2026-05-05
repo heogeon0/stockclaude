@@ -217,3 +217,43 @@ Phase 2 — 매크로 + economy_base 갱신 (자기완결)
 - **BLOCKING 누락 시 daily 자체 중단 옵션** — 현재 ⚠️ 보고만. 사용자 운영 패턴 안정 후 "BLOCKING 위반 N건 이상 시 중단" 임계 도입 검토.
 - **WebSearch quality 측정 인프라** — 인용 도메인 통계 / Tier 분포 / 인용 누락률 / 화이트리스트 매치율. weekly-review Phase 2 6-section 에 1 섹션 추가 검토.
 - **Tier 5 (학술) 신설** — arxiv.org / nature.com / science.org 등 산업별 base 의 기술 트렌드 search 에서 학술 자료가 산업 전문 (Tier 3) 보다 신뢰 높을 때 별도 Tier 분리 검토.
+
+---
+
+## 9. 사후 검증 (post-test, 2026-05-05)
+
+본 라운드 결정·문서 작성 후, workmux 워커 `test-daily-d` (worktree 격리) 가 신규 워크플로우를 검증. 환경: `.mcp.json` 없음 (worktree gitignore), `.env` 자동 copy, postgres healthy, MCP `claude_ai_stockclaude__*` 89 툴 호출 가능.
+
+### 9.1 검증 결과 요약
+
+- **BLOCKING 21/22 실 호출 + 1 명시 미수행** (test 컨텍스트로 #22 save 단계만 회피, silent skip 0건)
+- **WebSearch 2/7 풀 시도** — Phase 2 economy 2회 성공, Phase 3 per-stock 12회는 test 토큰 보호로 명시 미수행
+- **silent skip 0건** — 환경 무관 실행 의무 룰 작동 확인. 모든 실패가 명시 보고로 처리됨.
+- **새 룰 행동 반영 yes** — 토큰·환경 핑계 스킵 시도 없음. 차단 도메인 발견 시 fallback 명시 후 재시도.
+
+### 9.2 발견 사항 5건 (이슈 발행)
+
+| # | 이슈 | 심각도 | GitHub |
+|---|---|---|---|
+| 1 | W1 백엔드 미배포 — `check_base_freshness(scope, code)` production MCP 미반영. skill docs 와 deployed 정합성 깨짐. | 🔴 | [#21](https://github.com/heogeon0/stockclaude/issues/21) |
+| 2 | WebSearch Tier 1 핵심 3개 (wsj/reuters/ft) Anthropic 크롤러 robots.txt 차단. websearch-domains.md 1a/1b 분리 즉시 fix. | 🔴 | (즉시 fix — 본 라운드 §10 보강) |
+| 3 | `get_fx_rate` FRED 단일 의존 — 1회 에러로 BLOCKING 위반. yfinance/naver fallback + retry 필요. | 🟡 | [#22](https://github.com/heogeon0/stockclaude/issues/22) |
+| 4 | `analyze_position` 응답 size 가드 부재 — GS 147KB token 한도 초과 (insider 90일 다대량). 1건 fail = Phase 3 coverage 누락. | 🟡 | [#23](https://github.com/heogeon0/stockclaude/issues/23) |
+| 5 | 매크로 정형 partial fail 정책 부재 — FRED/ECOS 일부 null 정상이나 BLOCKING all-or-nothing. 임계 명문화 필요. | 🟡 | [#24](https://github.com/heogeon0/stockclaude/issues/24) |
+| 6 | per-stock WebSearch 12회/daily 부담 완화 — KR/US 분기 조건부 축약. | 🟢 | [#25](https://github.com/heogeon0/stockclaude/issues/25) |
+
+### 9.3 즉시 fix (본 라운드 추가)
+
+발견 #2 즉시 fix → `websearch-domains.md` Tier 1 분리:
+
+- **1a 사용 가능** (검증 워커 호출 성공): bloomberg / cnbc / nikkei / apnews / bbc
+- **1b Anthropic 크롤러 차단** (직접 인용 불가): wsj / reuters / ft → 2차 매체(1a) 또는 공식 기관(Tier 2) 우회
+
+worker 보고 원문: "Anthropic WebSearch 크롤러가 wsj.com / reuters.com / ft.com을 차단 — websearch-domains.md Tier 1의 핵심 도메인 3개가 작동 불가."
+
+### 9.4 학습 — workmux 격리 검증의 가치
+
+- 현재 worktree (`harness`) 가 아닌 신규 worktree (`test-daily-d`) 에서 검증 → 우리 세션 컨텍스트 영향 없이 객관 검증.
+- `.env` 는 global config `files.copy` 자동 — DB/API key 세팅 자동.
+- `.mcp.json` 미사용 환경 (Claude.ai 호스팅 MCP 만) 시뮬레이션 → "MCP 일부 불가" 시나리오까지 자연 검증됨.
+- 향후 라운드 doc 추가·skill 문서 변경 시 본 패턴 (workmux test worker) 정착 권장.

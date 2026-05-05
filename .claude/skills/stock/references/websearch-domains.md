@@ -10,12 +10,25 @@
 
 광역 시장·매크로·종목 뉴스의 1차 인용처. FOMC·지정학·실적 가이던스 등.
 
+### 1a. 사용 가능 (Anthropic WebSearch 크롤러 허용)
+
+검증 완료 (테스트 라운드 2026-05-daily-workflow-tightening §검증). 1차 인용처로 우선 사용.
+
 - `bloomberg.com`
-- `reuters.com`
-- `ft.com` (Financial Times)
-- `wsj.com` (Wall Street Journal)
-- `nikkei.com` (Nikkei Asia)
 - `cnbc.com`
+- `nikkei.com` (Nikkei Asia)
+- `apnews.com` (AP — 지정학 1차)
+- `bbc.com` (글로벌 보조)
+
+### 1b. ⚠️ Anthropic WebSearch 크롤러 차단 (robots.txt)
+
+원칙상 Tier 1 이지만 **현재 Anthropic WebSearch 가 크롤링 불가**. 직접 인용 시도 시 0건 반환. 실 daily 에서 재시도 무의미 — 2차 매체 (1a) 또는 공식 기관 (Tier 2) 으로 우회.
+
+- `wsj.com` (Wall Street Journal) — 차단
+- `reuters.com` — 차단
+- `ft.com` (Financial Times) — 차단
+
+차단 도메인 정보가 본문에 필요하면: (a) 1a 매체의 재인용 (예: bloomberg 가 WSJ 인용한 기사) (b) 공식 발표 원문 (Tier 2) 로 우회. 인용 시 "(via Bloomberg, 원기사 WSJ 2026-05-04)" 형식 명시.
 
 용도: daily Phase 2 (발언 톤·지정학), daily Phase 3 (per-stock 뉴스), base-stock #3 (경쟁사).
 
@@ -166,3 +179,4 @@ site:<tier_a_domain> OR site:<tier_b_domain> {키워드} YYYY-MM[-DD]
 | 날짜 | 라운드 | 변경 |
 |---|---|---|
 | 2026-05-04 | 2026-05-daily-workflow-tightening | 신설. Tier 1~4 분류 + 단계 × Tier 매트릭스. 금지 도메인 enumeration. |
+| 2026-05-05 | 2026-05-daily-workflow-tightening (post-test) | Tier 1 분리 — 1a 사용 가능 (bloomberg/cnbc/nikkei/apnews/bbc), 1b Anthropic 차단 (wsj/reuters/ft). 검증 워커 (test-daily-d) 가 robots.txt 차단 보고. 차단 도메인은 2차 재인용·공식 기관 우회 필수. |
