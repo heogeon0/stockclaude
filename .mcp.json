@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "stockclaude": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "server.mcp.server"]
+    }
+  }
+}
