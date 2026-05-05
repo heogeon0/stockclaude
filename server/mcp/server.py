@@ -203,6 +203,34 @@ def _row_safe(row: dict | None) -> dict | None:
     return out
 
 
+# =====================================================================
+# analyze_position 응답 size 가드 (#23, GS 147KB token 한도 사례)
+# =====================================================================
+
+# 최근 90일 raw rows 다대량 종목 (예: GS Form 4 다발) 대비.
+# total_count + truncated 메타 동반으로 LLM 이 cap 인지 가능.
+DISCLOSURES_MAX_ROWS = 20  # 14일치 raw — Big-tech 8-K 폭증 대비
+INSIDER_MAX_ROWS = 20      # 90일치 raw — Form 4 다발 종목 대비
+
+
+def _truncate_rows(rows: list[dict], max_rows: int) -> dict:
+    """rows 리스트를 cap + 메타 명시. count = 표시 행 수, total_count = 원본 행 수.
+
+    `truncated: True` 시 LLM 이 별도 MCP (`get_us_insider_trades` / `get_kr_disclosures`)
+    호출로 풀 행 조회 가능 — analyze_position 안에서는 응답 size 보호 우선.
+    """
+    if not rows:
+        return {"rows": [], "count": 0, "truncated": False}
+    if len(rows) <= max_rows:
+        return {"rows": rows, "count": len(rows), "truncated": False}
+    return {
+        "rows": rows[:max_rows],
+        "count": max_rows,
+        "total_count": len(rows),
+        "truncated": True,
+    }
+
+
 def _json_safe(obj: Any) -> Any:
     """numpy/pandas/Decimal/datetime 을 재귀적으로 JSON 원시 타입으로 변환.
 
@@ -2880,22 +2908,25 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
         bundle["errors"]["consensus"] = str(e)
 
     # 10) disclosures (v4 신규) — KR=DART / US=EDGAR 14일
+    # v9 (라운드 2026-05 사후, #23): 응답 size 가드. 다대량 종목 (8-K 폭증) 대비.
     try:
         if market == "us":
             from server.scrapers import edgar
             disc_df = edgar.fetch_disclosures(code, days=14)
         else:
             disc_df = dart.fetch_disclosures(code, days=14)
-        bundle["disclosures"] = (
+        all_disc = (
             disc_df.to_dict(orient="records")
             if disc_df is not None and not disc_df.empty else []
         )
+        bundle["disclosures"] = _truncate_rows(all_disc, max_rows=DISCLOSURES_MAX_ROWS)
         success += 1
     except Exception as e:
         bundle["errors"]["disclosures"] = str(e)
-        bundle["disclosures"] = []
+        bundle["disclosures"] = {"rows": [], "count": 0, "truncated": False}
 
     # 11) insider_trades (v4 신규) — KR=DART major_shareholders_exec / US=Finnhub 90일
+    # v9 (라운드 2026-05 사후, #23): GS 147KB token 한도 초과 사례 — rows cap + summary 강화.
     try:
         if market == "us":
             from server.scrapers import finnhub as fh
@@ -2906,24 +2937,33 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
             if ins_df is not None and not ins_df.empty and "rcept_dt" in ins_df.columns:
                 cutoff = (pd.Timestamp.now() - pd.Timedelta(days=90)).strftime("%Y%m%d")
                 ins_df = ins_df[ins_df["rcept_dt"] >= cutoff].copy()
-        rows = (
+        all_rows = (
             ins_df.to_dict(orient="records")
             if ins_df is not None and not ins_df.empty else []
         )
         # 90일 누적 매수/매도 합계 (US 만 가능 — KR raw 는 별도 매핑 필요)
         net_summary: dict = {"buy_count": 0, "sell_count": 0}
-        if market == "us" and rows:
-            for r in rows:
+        if market == "us" and all_rows:
+            for r in all_rows:
                 t = str(r.get("유형") or "").strip()
                 if t == "매수":
                     net_summary["buy_count"] += 1
                 elif t == "매도":
                     net_summary["sell_count"] += 1
-        bundle["insider_trades"] = {"rows": rows, "summary_90d": net_summary, "count": len(rows)}
+        truncated = _truncate_rows(all_rows, max_rows=INSIDER_MAX_ROWS)
+        bundle["insider_trades"] = {
+            "rows": truncated["rows"],
+            "summary_90d": net_summary,
+            "count": truncated["count"],          # 표시 rows 수 (cap 후)
+            "total_count": len(all_rows),         # 원본 rows 수 (cap 전)
+            "truncated": truncated["truncated"],
+        }
         success += 1
     except Exception as e:
         bundle["errors"]["insider_trades"] = str(e)
-        bundle["insider_trades"] = {"rows": [], "summary_90d": {}, "count": 0}
+        bundle["insider_trades"] = {
+            "rows": [], "summary_90d": {}, "count": 0, "total_count": 0, "truncated": False,
+        }
 
     # 12) base 본문 3층 inject (v4 신규, include_base=True 시) — economy/industry/stock
     if include_base:

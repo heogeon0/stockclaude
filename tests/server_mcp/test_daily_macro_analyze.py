@@ -367,6 +367,88 @@ def test_analyze_position_meta_keys_present(monkeypatch):
     assert "categories_succeeded" in out
     assert out["categories_total"] == 12  # include_base=True
     assert "coverage_pct" in out
+
+
+# ---------------------------------------------------------------------------
+# 응답 size 가드 (#23) — disclosures + insider_trades rows cap
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_rows_under_limit_unchanged():
+    """rows 개수 ≤ max_rows 면 truncated=False, 원본 그대로."""
+    rows = [{"a": 1}, {"a": 2}, {"a": 3}]
+    out = mcp_module._truncate_rows(rows, max_rows=20)
+    assert out["rows"] == rows
+    assert out["count"] == 3
+    assert out["truncated"] is False
+    assert "total_count" not in out  # truncated 시만 포함
+
+
+def test_truncate_rows_over_limit_caps_with_metadata():
+    """rows 다대량 → cap + total_count + truncated=True."""
+    rows = [{"i": i} for i in range(50)]
+    out = mcp_module._truncate_rows(rows, max_rows=20)
+    assert len(out["rows"]) == 20
+    assert out["rows"][0] == {"i": 0}        # 최근(앞)부터 보존
+    assert out["count"] == 20
+    assert out["total_count"] == 50
+    assert out["truncated"] is True
+
+
+def test_truncate_rows_empty_safe():
+    out = mcp_module._truncate_rows([], max_rows=20)
+    assert out == {"rows": [], "count": 0, "truncated": False}
+
+
+def test_analyze_position_insider_truncates_when_over_limit(monkeypatch):
+    """insider_trades 90일 raw rows 다대량 (예: GS 147KB 사례) → cap + total_count 메타."""
+    _patch_analyze_position_dependencies(monkeypatch)
+
+    # finnhub.fetch_insider_trading 가 50개 row 반환 (max=20 초과)
+    import pandas as pd
+    big_rows = pd.DataFrame([
+        {"날짜": f"2026-04-{(i % 30) + 1:02d}", "인물": f"insider_{i}",
+         "유형": "매수" if i % 2 else "매도", "주식수": 100, "가격": 500.0}
+        for i in range(50)
+    ])
+    from server.scrapers import finnhub as fh
+    monkeypatch.setattr(fh, "fetch_insider_trading", lambda code, days=90: big_rows)
+    monkeypatch.setattr(mcp_module.stocks, "get_stock", lambda code: {
+        "code": "GS", "name": "Goldman Sachs", "market": "us", "industry_code": "us-financials",
+    })
+
+    out = mcp_module.analyze_position("GS", include_base=False)
+    insider = out["insider_trades"]
+    assert insider["truncated"] is True
+    assert insider["count"] == 20         # cap 적용
+    assert insider["total_count"] == 50   # 원본 보존
+    assert len(insider["rows"]) == 20
+    # summary_90d 는 전체 50건 기반 (US 매수/매도 카운트)
+    assert insider["summary_90d"]["buy_count"] + insider["summary_90d"]["sell_count"] == 50
+
+
+def test_analyze_position_disclosures_truncates_when_over_limit(monkeypatch):
+    """disclosures 14일 raw rows 다대량 (Big-tech 8-K 폭증 대비) → cap."""
+    _patch_analyze_position_dependencies(monkeypatch)
+
+    import pandas as pd
+    big_disc = pd.DataFrame([
+        {"date": f"2026-05-{(i % 14) + 1:02d}", "type": "8-K", "title": f"filing_{i}",
+         "url": f"https://example/{i}"}
+        for i in range(35)
+    ])
+    from server.scrapers import edgar
+    monkeypatch.setattr(edgar, "fetch_disclosures", lambda code, days=14: big_disc)
+    monkeypatch.setattr(mcp_module.stocks, "get_stock", lambda code: {
+        "code": "GOOGL", "name": "Alphabet", "market": "us", "industry_code": "us-internet",
+    })
+
+    out = mcp_module.analyze_position("GOOGL", include_base=False)
+    disc = out["disclosures"]
+    assert disc["truncated"] is True
+    assert disc["count"] == 20
+    assert disc["total_count"] == 35
+    assert len(disc["rows"]) == 20
     assert isinstance(out["coverage_pct"], (int, float))
     assert "errors" in out
 
