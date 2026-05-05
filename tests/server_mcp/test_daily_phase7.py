@@ -69,20 +69,16 @@ def test_save_daily_report_empty_verdict_normalized_to_none(monkeypatch):
     assert captured["verdict"] is None
 
 
-def test_save_daily_report_whitespace_verdict_normalized_to_none_in_repos(monkeypatch):
-    """verdict 공백만 → repos 에는 None 으로 전달 (CHECK constraint 회피).
+def test_save_daily_report_whitespace_verdict_normalized_to_none_in_both(monkeypatch):
+    """verdict 공백만 → repos + 응답 envelope 둘 다 None (#18, 라운드 2026-05 사후 fix).
 
-    ⚠️ 응답 envelope 의 'verdict' 필드는 strip 결과(빈 문자열)를 그대로 노출 — 즉,
-       응답 verdict 와 repos 에 저장되는 값이 불일치 (server.py:706-714).
-       응답은 빈 문자열, DB 는 None. CHECK constraint 회피만 되면 의도상 OK 하나
-       LLM 이 응답을 다시 읽어 verdict 를 검증할 때 잠재적 혼란.
+    이전 동작(라운드 2026-05): repos = None / 응답 = "" 비대칭.
+    fix 후 (#18): 응답도 `v or None` 으로 통일 — LLM 이 응답을 재확인해도 None.
     """
     captured = _patch_upsert(monkeypatch)
     out = mcp_module.save_daily_report("005930", "2026-05-05", "   ", "본문")
-    # repos 호출 시 verdict 는 None (CHECK 회피 — 핵심 contract)
     assert captured["verdict"] is None
-    # 응답 verdict 는 strip 결과 빈 문자열 (현 구현 동작 보존; 변경 시 이 테스트 깨져 인지)
-    assert out["verdict"] == ""
+    assert out["verdict"] is None  # #18 fix — 응답도 None
 
 
 def test_save_daily_report_none_verdict_passed_through(monkeypatch):

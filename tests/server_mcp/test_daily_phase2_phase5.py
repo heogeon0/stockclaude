@@ -250,35 +250,35 @@ def test_portfolio_correlation_passes_days_through_and_calls_diversification(mon
     assert "effective_holdings" in out
 
 
-def test_portfolio_correlation_us_position_uses_kis_us_daily(monkeypatch):
-    """US 보유 종목은 kis.fetch_us_daily 경로. KR 은 _fetch_ohlcv 경로."""
+def test_portfolio_correlation_kr_and_us_both_use_fetch_ohlcv(monkeypatch):
+    """#19 fix: KR/US 모두 _fetch_ohlcv 통일 호출. yfinance fallback (>100일 US) 가능."""
     rows = [
         {"code": "005930", "market": "kr", "cost_basis": Decimal("100")},
         {"code": "AAPL", "market": "us", "cost_basis": Decimal("100")},
     ]
     _patch_active(monkeypatch, rows)
 
-    kr_called: dict = {"hit": False}
-    us_called: dict = {"hit": False}
+    fetched_codes: list[str] = []
 
-    def fake_kr_fetch(code, days=400):
-        kr_called["hit"] = True
+    def fake_fetch(code, days=400):
+        fetched_codes.append(code)
         return _ohlcv(80)
 
-    def fake_us_fetch(code, days):
-        us_called["hit"] = True
-        return _ohlcv(80)
-
-    monkeypatch.setattr(mcp_module, "_fetch_ohlcv", fake_kr_fetch)
-    monkeypatch.setattr(mcp_module.kis, "fetch_us_daily", fake_us_fetch)
+    # 단일 _fetch_ohlcv 가 KR/US 둘 다 처리 (자동 분기). kis.fetch_us_daily 직접 호출 X.
+    monkeypatch.setattr(mcp_module, "_fetch_ohlcv", fake_fetch)
+    # kis.fetch_us_daily 가 직접 호출되지 않음을 보장 — 호출되면 RuntimeError
+    def _should_not_be_called(*a, **kw):
+        raise RuntimeError("kis.fetch_us_daily 직접 호출 — _fetch_ohlcv 우회 (#19 위반)")
+    monkeypatch.setattr(mcp_module.kis, "fetch_us_daily", _should_not_be_called)
     monkeypatch.setattr(
         mcp_module, "diversification_metrics", lambda pd_, weights=None: {"ok": True}
     )
 
     mcp_module.portfolio_correlation(days=60)
 
-    assert kr_called["hit"] is True
-    assert us_called["hit"] is True
+    # 두 종목 모두 _fetch_ohlcv 경로
+    assert "005930" in fetched_codes
+    assert "AAPL" in fetched_codes
 
 
 def test_portfolio_correlation_skips_empty_dataframe(monkeypatch):

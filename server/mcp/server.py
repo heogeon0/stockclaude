@@ -739,7 +739,7 @@ def save_daily_report(
         key_factors=key_factors,
         referenced_rules=referenced_rules,
     )
-    return {"ok": True, "code": code, "date": date, "verdict": v, "chars": len(content)}
+    return {"ok": True, "code": code, "date": date, "verdict": v or None, "chars": len(content)}
 
 
 @mcp.tool
@@ -1114,10 +1114,8 @@ def portfolio_correlation(days: int = 60) -> dict:
         code = p["code"]
         market = p["market"]
         try:
-            if market == "kr":
-                df = _fetch_ohlcv(code, days=max(days, 20))
-            else:
-                df = kis.fetch_us_daily(code, days=days)
+            # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+            df = _fetch_ohlcv(code, days=max(days, 20))
             if df.empty:
                 continue
             df = df.sort_values("날짜").reset_index(drop=True)
@@ -1798,10 +1796,8 @@ def rank_momentum(
     rows = []
     for code in codes:
         try:
-            if market == "kr":
-                df = _fetch_ohlcv(code, days=max(lookback_days, 20))
-            else:
-                df = kis.fetch_us_daily(code, days=lookback_days)
+            # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+            df = _fetch_ohlcv(code, days=max(lookback_days, 20))
             if df is None or df.empty or len(df) < 60:
                 continue
             df = df.sort_values("날짜").reset_index(drop=True)
@@ -2682,9 +2678,8 @@ def analyze_position(code: str, include_base: bool = True) -> dict:
     total = 12 if include_base else 11
 
     def _ohlcv() -> pd.DataFrame:
-        if market == "kr":
-            return _fetch_ohlcv(code, days=400)
-        return kis.fetch_us_daily(code, days=400)
+        # #19 fix — _fetch_ohlcv 통일 (KR/US 자동 분기 + yfinance fallback for >100일 US)
+        return _fetch_ohlcv(code, days=400)
 
     # 1) context
     try:
