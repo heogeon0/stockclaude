@@ -24,17 +24,17 @@
 | 8 | 1 | **base 미처리 narrative revision 큐** | `get_pending_base_revisions(weeks=4)` — `count >= 3` 시 보고서 최상단 ⚠️ 알림 |
 | 9 | 2 | **economy stale 자기 체크** ⭐ ⛔ | `check_base_freshness(scope="economy")` — economy_base 만 검사 (industries/stocks 제외) |
 | 10 | 2 | 시장 국면 판정 | `detect_market_regime()` |
-| 11 | 2 | **매크로 정형 — US** ⭐ ⛔ | `get_macro_indicators_us()` (DFF/CPI/UNRATE/DGS10/SP500 등) |
-| 12 | 2 | **매크로 정형 — KR** ⭐ ⛔ | `get_macro_indicators_kr()` (기준금리/CPI/M2/경상수지 등 8 default) |
-| 13 | 2 | **수익률 곡선** ⭐ ⛔ | `get_yield_curve()` (UST 3M~30Y + 10Y_3M_spread + 역전 여부) |
-| 14 | 2 | **환율** ⭐ ⛔ | `get_fx_rate("DEXKOUS")` (1일 TTL) |
+| 11 | 2 | **매크로 정형 — US** ⭐ ⛔ | `get_macro_indicators_us()` (DFF/CPI/UNRATE/DGS10/SP500 등). **핵심 시리즈 4 중 3 OK 이면 BLOCKING 충족** (DFF/CPIAUCSL/DGS10/VIXCLS — partial fail 정책 #24) |
+| 12 | 2 | **매크로 정형 — KR** ⭐ ⛔ | `get_macro_indicators_kr()` (기준금리/CPI/M2/경상수지 등 8 default). **핵심 시리즈 3 중 2 OK 이면 BLOCKING 충족** (722Y001/901Y009/731Y004) |
+| 13 | 2 | **수익률 곡선** ⭐ ⛔ | `get_yield_curve()` (UST 3M~30Y + 10Y_3M_spread + 역전 여부). **핵심 4 중 3 OK 이면 BLOCKING 충족** (3M/2Y/10Y/spread) |
+| 14 | 2 | **환율** ⭐ ⛔ | `get_fx_rate("DEXKOUS")` (1일 TTL — FRED → yfinance KRW=X fallback, #22 처리). 1차 fail 도 fallback 충족 시 BLOCKING 통과 |
 | 15 | 2 | (선택) 경제 캘린더 | `get_economic_calendar(days=7)` — Finnhub. 누락 허용 (BLOCKING 외) |
 | 16 | 2 | **WebSearch — 발언 톤** ⭐ ⛔ | 1회 BLOCKING — Tier 1 (Bloomberg/Reuters) + Tier 2 (Fed/BOK 공식). FOMC/금통위·CPI·연설 톤 추적 |
 | 17 | 2 | **WebSearch — 지정학** ⭐ ⛔ | 1회 BLOCKING — Tier 1 (Bloomberg/Reuters/FT/WSJ). 중동·미중·우크라·제재 |
 | 18 | 2 | **economy stale → inline** ⛔ | #9 결과 `is_stale=true` 면 `references/base-economy-update-inline.md` 진입 → economy_base 갱신 |
 | 19 | 3 | **per-stock-analysis 5단계** ⭐ ⛔ | 종목마다 `references/per-stock-analysis.md` 절차. step 1 = `check_base_freshness(scope="stock", code=code)` 자기 영역 체크 |
 | 20 | 3 | **per-stock cascade — industry → stock** ⭐ ⛔ | step 2 cascade — economy 제외 (Phase 2 가 처리). industry stale → stock stale 만 |
-| 21 | 3 | **per-stock WebSearch** ⭐ ⛔ | step 4 LLM 종합 판단 시 WebSearch 1회/종목 BLOCKING — Tier 1 (Bloomberg/Reuters/FT/WSJ) + KR 종목이면 Tier 4 (한경/매경) 추가 |
+| 21 | 3 | **per-stock WebSearch** ⭐ ⛔ | step 4 LLM 종합 판단 시 WebSearch 1회/종목 BLOCKING — KR 종목: Tier 1 (Bloomberg/CNBC/Nikkei) + Tier 4 (한경/매경/이데일리). US 종목: Tier 1 만 (KR 매체 skip — #25 운영 효율). **이벤트 트리거 (실적 D-7 / 52w 신고가 / 등락률 ±3%) 시 무조건 풀 search** (조건부 강화) |
 | 22 | 7 | **save_daily_report + save_portfolio_summary** ⛔ | DB read-back 의무 (Phase 7 종료 체크리스트 — 본 파일 하단) |
 
 **⭐ 변경 사실 (라운드 2026-05-daily-workflow-tightening)**:

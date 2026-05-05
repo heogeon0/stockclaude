@@ -79,6 +79,17 @@ description: 개인 주식 포트폴리오 운영·분석 통합 skill (KR + US)
 - 다음 daily 시작 시 누락 항목 재시도 우선 순위.
 - 반복 위반 시 사용자에게 구조적 문제 보고 (skill 자체 결함일 수 있음).
 
+### 외부 API partial fail 정책 (#24, 라운드 2026-05 사후)
+
+외부 API (FRED·ECOS·Finnhub) 의 일부 시리즈 null/error 는 *정상 운영 케이스* — silent skip 도 BLOCKING 위반도 아님. 핵심 시리즈 임계 충족 여부로 BLOCKING 판정:
+
+- `get_macro_indicators_us`: 핵심 4 (DFF/CPIAUCSL/DGS10/VIXCLS) 중 3 OK → BLOCKING 충족
+- `get_macro_indicators_kr`: 핵심 3 (722Y001/901Y009/731Y004) 중 2 OK → BLOCKING 충족
+- `get_yield_curve`: 핵심 4 (3M/2Y/10Y/spread) 중 3 OK → BLOCKING 충족
+- `get_fx_rate`: FRED 실패 시 yfinance fallback 충족 시 BLOCKING 통과 (#22)
+
+핵심 시리즈 미충족이면 진짜 BLOCKING 위반. 비핵심 시리즈 partial fail 은 daily 보고서 본문에 "(FRED partial: VIX/UNRATE 일시 미수집)" 명시.
+
 ### 자기 점검
 
 작업 종료 직전 (Phase 7 `save_portfolio_summary` 직후) 자가 audit:

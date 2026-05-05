@@ -24,7 +24,7 @@ v7 (라운드 2026-05 초기) 은 "정형 데이터 90% 커버 → WebSearch 자
 |---|---|---|---|
 | **daily Phase 2 — economy 발언 톤** | 1회 BLOCKING | Tier 1 + Tier 2 (Bloomberg/Reuters + Fed/BOK) | daily 보고서 `## 매크로 / FOMC·금통위 톤` |
 | **daily Phase 2 — economy 지정학** | 1회 BLOCKING | Tier 1 (Bloomberg/Reuters/FT/WSJ) | daily 보고서 `## 지정학 / 리스크` |
-| **daily Phase 3 — per-stock 뉴스** | 1회/종목 BLOCKING | Tier 1 + Tier 4 (KR 종목이면) | daily 종목 보고서 `## 뉴스 / 촉매` |
+| **daily Phase 3 — per-stock 뉴스** | 1회/종목 BLOCKING (#25) | KR 종목: Tier 1 (1a 사용 가능) + Tier 4 / US 종목: Tier 1 만 (Tier 4 skip) / **이벤트 트리거 (실적 D-7 / 52w 신고가 / 등락률 ±3%) 시 KR/US 무관 풀 search** | daily 종목 보고서 `## 뉴스 / 촉매` |
 | **base-industry — 점유율** | 1회 BLOCKING | Tier 3 (Gartner/IDC/Counterpoint/SemiAnalysis) | industry base 본문 `## 점유율` |
 | **base-industry — 기술 트렌드** | 1회 BLOCKING | Tier 3 (Gartner/IDC + 분야별 전문 매체) | industry base 본문 `## 기술 트렌드` |
 | **base-stock #3 경쟁사** | 1회 BLOCKING | Tier 1 (글로벌 매체) | stock base 본문 `## 딜레이더 #3 경쟁사` |
